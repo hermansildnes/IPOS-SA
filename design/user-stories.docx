@@ -1,0 +1,85 @@
+User Story 1: Merchant Account Creation
+ID: SA-01
+Priority: High
+Risk: Low
+Estimate: 5 Story Points
+
+Narrative: As a staff member (admin), I want to register a new merchant pharmacy with their business details, so that they can begin using the system to place orders
+
+Acceptance Criteria:
+System must capture: merchant name, unique business ID, registered address, and contact email
+System must prevent the creation of a merchant with a duplicate business ID or email
+Upon creation, the merchant account status must default to "pending" until a credit limit is assigned
+All data must be persisted in the central SQL database
+
+User Story 2: Credit Limit Assignment
+ID: SA-02
+Priority: High
+Risk: Medium
+Estimate: 3 Story Points
+
+Narrative: As a financial administrator, I want to set a specific credit limit for a merchant account, so that the system can restrict orders once their debt threshold is reached
+
+Acceptance Criteria:
+System must allow a user to search for a merchant and input a numerical credit limit
+System must reject any negative values for the credit limit
+When a credit limit is saved, the system must log the date of the change and the ID of the staff member who made the update
+System must provide an interface so the CA subsystem can check this limit before allowing an order
+
+
+User Story 3: Product Catalogue Management
+ID: SA-03
+Priority: High
+Risk: Low
+Estimate: 8 Story Points
+
+Narrative: As an inventory manager, I want to add and update pharmaceutical products in the central catalogue, so that the merchant and public apps have access to up to date item data
+
+Acceptance Criteria:
+System must allow editing of the Item name, SKU, bulk price, and stock level
+System must support the bulk update of prices for a group of selected items
+Prices must be stored to two decimal places to reflect currency standards
+System must immediately update the data available to the PU and CA subsystems via the shared interface
+
+User Story 4: Automated Order Validation
+ID: SA-04
+Priority: High
+Risk: High
+Estimate: 13 Story Points
+
+Narrative: As the SA subsystem, I want to validate incoming orders from the CA subsystem against current stock and credit levels, so that invalid or high risk orders are rejected before processing
+
+Acceptance Criteria:
+System must receive an order object containing merchant ID, item IDs, and quantities
+System must verify that the requested quantities are currently in stock before approving
+System must verify that the order total does not exceed the merchant's remaining credit limit
+System must return a success or failure status code to the CA subsystem within two seconds
+
+
+User Story 5: Financial Payment Processing
+ID: SA-05
+Priority: Medium
+Risk: Medium
+Estimate: 5 Story Points
+
+Narrative: As an accounting staff member, I want to log payments received from merchants, so that their current debt is reduced and their purchasing power is restored
+
+Acceptance Criteria:
+System must provide a searchable list of merchants with outstanding balances
+Staff member must be able to select a payment type: Bank Transfer, Card, or Cheque
+System must update the merchant's current debt in real-time after the payment is saved
+System must generate a unique payment confirmation reference number for auditing
+
+User Story 6: Management Inventory Reporting
+ID: SA-06
+Priority: Low
+Risk: Low
+Estimate: 5 Story Points
+
+Narrative: As a warehouse supervisor, I want to generate a report showing items with stock below the reorder threshold, so that I can initiate restocking from suppliers
+
+Acceptance Criteria:
+Report must list all items where current stock is below a predefined Reorder Threshold
+Report must display Item Name, SKU, Current Stock, and Suggested Reorder Quantity
+User must be able to export this report as a PDF or view it on-screen
+Report must be timestamped with the current server time and date
