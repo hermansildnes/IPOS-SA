@@ -1,85 +1,55 @@
-User Story 1: Merchant Account Creation
-ID: SA-01
+User Story 1: Recording Bank Transfer Payment
+ID: SA-ACC-01
 Priority: High
-Risk: Low
+Risk: Medium
 Estimate: 5 Story Points
 
-Narrative: As a staff member (admin), I want to register a new merchant pharmacy with their business details, so that they can begin using the system to place orders
+Narrative: As an accounting staff member, I want to manually record a bank transfer payment received from a merchant, so that their outstanding debt is reduced and their purchasing power is restored.
 
 Acceptance Criteria:
-System must capture: merchant name, unique business ID, registered address, and contact email
-System must prevent the creation of a merchant with a duplicate business ID or email
-Upon creation, the merchant account status must default to "pending" until a credit limit is assigned
-All data must be persisted in the central SQL database
+System must allow selection of a merchant account via a searchable list or unique business ID
+System must capture the payment amount, the bank reference number, and the date of the transfer
+Upon saving, the merchant’s current debt must be decreased by the payment amount in real-time
+The system must automatically recalculate and update the merchant’s "available credit" field
 
-User Story 2: Credit Limit Assignment
-ID: SA-02
-Priority: High
+User Story 2: Recording Cheque Payment
+ID: SA-ACC-02
+Priority: Medium
 Risk: Medium
 Estimate: 3 Story Points
 
-Narrative: As a financial administrator, I want to set a specific credit limit for a merchant account, so that the system can restrict orders once their debt threshold is reached
+Narrative: As an accounting staff member, I want to log a cheque payment into the system, so that the merchant’s account balance accurately reflects physical funds received.
 
 Acceptance Criteria:
-System must allow a user to search for a merchant and input a numerical credit limit
-System must reject any negative values for the credit limit
-When a credit limit is saved, the system must log the date of the change and the ID of the staff member who made the update
-System must provide an interface so the CA subsystem can check this limit before allowing an order
+System must provide a specific "cheque" payment type option within the payment entry interface
+System must require the entry of a cheque number and the name of the issuing bank
+The payment must be linked to the merchant's profile to ensure the ledger remains balanced
+The system must generate a unique internal transaction receipt number for auditing purposes
 
-
-User Story 3: Product Catalogue Management
-ID: SA-03
+User Story 3: Recording Card Payment
+ID: SA-ACC-03
 Priority: High
-Risk: Low
-Estimate: 8 Story Points
-
-Narrative: As an inventory manager, I want to add and update pharmaceutical products in the central catalogue, so that the merchant and public apps have access to up to date item data
-
-Acceptance Criteria:
-System must allow editing of the Item name, SKU, bulk price, and stock level
-System must support the bulk update of prices for a group of selected items
-Prices must be stored to two decimal places to reflect currency standards
-System must immediately update the data available to the PU and CA subsystems via the shared interface
-
-User Story 4: Automated Order Validation
-ID: SA-04
-Priority: High
-Risk: High
-Estimate: 13 Story Points
-
-Narrative: As the SA subsystem, I want to validate incoming orders from the CA subsystem against current stock and credit levels, so that invalid or high risk orders are rejected before processing
-
-Acceptance Criteria:
-System must receive an order object containing merchant ID, item IDs, and quantities
-System must verify that the requested quantities are currently in stock before approving
-System must verify that the order total does not exceed the merchant's remaining credit limit
-System must return a success or failure status code to the CA subsystem within two seconds
-
-
-User Story 5: Financial Payment Processing
-ID: SA-05
-Priority: Medium
 Risk: Medium
 Estimate: 5 Story Points
 
-Narrative: As an accounting staff member, I want to log payments received from merchants, so that their current debt is reduced and their purchasing power is restored
+Narrative: As an accounting staff member, I want to enter card transaction details for a merchant payment, so that the financial records are reconciled and the merchant's account status is updated.
 
 Acceptance Criteria:
-System must provide a searchable list of merchants with outstanding balances
-Staff member must be able to select a payment type: Bank Transfer, Card, or Cheque
-System must update the merchant's current debt in real-time after the payment is saved
-System must generate a unique payment confirmation reference number for auditing
+System must allow the entry of a card transaction authorization code from the external payment gateway
+System must validate that the payment amount is a positive numerical value before processing
+The system must trigger a status check to move the account from "suspended" to "normal" if the debt falls below the required threshold
+The transaction must be recorded in a permanent financial audit trail
 
-User Story 6: Management Inventory Reporting
-ID: SA-06
-Priority: Low
+User Story 4: Generating Merchant Financial Statements
+ID: SA-ACC-04
+Priority: Medium
 Risk: Low
-Estimate: 5 Story Points
+Estimate: 8 Story Points
 
-Narrative: As a warehouse supervisor, I want to generate a report showing items with stock below the reorder threshold, so that I can initiate restocking from suppliers
+Narrative: As an accounting staff member, I want to generate a financial statement for a specific merchant, so that I can provide them with a summary of their orders and payments for a specific timeframe.
 
 Acceptance Criteria:
-Report must list all items where current stock is below a predefined Reorder Threshold
-Report must display Item Name, SKU, Current Stock, and Suggested Reorder Quantity
-User must be able to export this report as a PDF or view it on-screen
-Report must be timestamped with the current server time and date
+System must allow the user to define a "start date" and "end date" for the statement period
+The statement must list all individual invoices (orders) and all recorded payments (bank/card/cheque) chronologically
+The system must calculate and display the total opening balance, total period activity, and final closing balance
+The resulting report must be viewable on-screen with an option to export as a PDF document
