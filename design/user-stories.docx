@@ -1,55 +1,83 @@
-User Story 1: Recording Bank Transfer Payment
-ID: SA-ACC-01
+User Story 1: Reinstating Defaulted Accounts
+ID: SA-DIR-01
 Priority: High
-Risk: Medium
+Risk: High
 Estimate: 5 Story Points
 
-Narrative: As an accounting staff member, I want to manually record a bank transfer payment received from a merchant, so that their outstanding debt is reduced and their purchasing power is restored.
+Narrative: As a Director of Operations, I want to manually override the status of an account flagged as in default, so that a merchant can resume ordering after long-term debt issues are resolved.
 
 Acceptance Criteria:
-System must allow selection of a merchant account via a searchable list or unique business ID
-System must capture the payment amount, the bank reference number, and the date of the transfer
-Upon saving, the merchant’s current debt must be decreased by the payment amount in real-time
-The system must automatically recalculate and update the merchant’s "available credit" field
+The system must restrict this functionality specifically to users with Director-level credentials.
+The system must require a mandatory "reason for reinstatement" text entry before the status can be changed.
+Upon execution, the merchant's status must change from "in default" to "normal" and the restriction on placing new orders must be lifted.
+The system must log the Director's ID and timestamp the action for the annual audit trail.
 
-User Story 2: Recording Cheque Payment
-ID: SA-ACC-02
+User Story 2: Managing System-Wide Discount Plans
+ID: SA-DIR-02
 Priority: Medium
+Risk: Medium
+Estimate: 8 Story Points
+
+Narrative: As a Director of Operations, I want to configure the parameters for fixed and flexible discount plans, so that the system automatically applies the correct pricing logic to merchant orders.
+
+Acceptance Criteria:
+The system must allow the Director to set the percentage for "Fixed" discounts applied to specific merchant categories.
+The system must allow the definition of "Flexible" discount thresholds (e.g., 5% off for orders exceeding £1000).
+The system must ensure that only one discount plan type can be active for a single merchant at any given time.
+The updated logic must be immediately accessible to the order validation engine to ensure correct invoicing.
+
+User Story 3: Global Turnover Reporting
+ID: SA-DIR-03
+Priority: Medium
+Risk: Low
+Estimate: 13 Story Points
+
+Narrative: As a Director of Operations, I want to generate a high-level turnover report for the entire company, so that I can analyze total sales performance across all merchants and product categories.
+
+Acceptance Criteria:
+The report must aggregate total revenue from all successfully processed orders within a user-defined date range.
+The system must provide a breakdown of turnover by product category (e.g., Antibiotics, Pain Relief).
+The report must include a comparison between total invoiced amounts and total payments actually received.
+The output must be generated in a high-level summary dashboard format with an option to download as a spreadsheet.
+
+User Story 4: Advanced Product Search and Filtering
+ID: SA-MER-01
+Priority: High
+Risk: Low
+Estimate: 5 Story Points
+
+Narrative: As a merchant, I want to search and filter the product catalogue by name and category, so that I can quickly find the pharmaceutical supplies I need to stock in my pharmacy.
+
+Acceptance Criteria:
+The system must allow keyword searches that match against the product name or description.
+The interface must provide filters for "Package Type" (e.g., box, bottle, vial) and "Category."
+The results must only display items that are currently marked as "active" in the staff catalogue.
+The search must return results within one second to maintain a professional user experience.
+
+User Story 5: Order Status and Tracking
+ID: SA-MER-02
+Priority: High
+Risk: Low
+Estimate: 5 Story Points
+
+Narrative: As a merchant, I want to view the real-time status of my submitted orders, so that I can track when my supplies have been accepted, processed, or dispatched.
+
+Acceptance Criteria:
+The system must provide an "Order History" view where each order is tagged with its current state (Accepted, Processing, Dispatched, or Delivered).
+For orders marked as "Dispatched," the system must display the courier name and the tracking number provided by the operations staff.
+The merchant must be able to view a detailed breakdown of the items included in each historical order.
+The system must display an "Invoiced" status once the financial department has confirmed the order totals.
+
+User Story 6: Real-time Credit and Debt Overview
+ID: SA-MER-03
+Priority: High
 Risk: Medium
 Estimate: 3 Story Points
 
-Narrative: As an accounting staff member, I want to log a cheque payment into the system, so that the merchant’s account balance accurately reflects physical funds received.
+Narrative: As a merchant, I want to view my current outstanding debt and remaining credit limit, so that I can ensure I have sufficient funds to place a new order.
 
 Acceptance Criteria:
-System must provide a specific "cheque" payment type option within the payment entry interface
-System must require the entry of a cheque number and the name of the issuing bank
-The payment must be linked to the merchant's profile to ensure the ledger remains balanced
-The system must generate a unique internal transaction receipt number for auditing purposes
-
-User Story 3: Recording Card Payment
-ID: SA-ACC-03
-Priority: High
-Risk: Medium
-Estimate: 5 Story Points
-
-Narrative: As an accounting staff member, I want to enter card transaction details for a merchant payment, so that the financial records are reconciled and the merchant's account status is updated.
-
-Acceptance Criteria:
-System must allow the entry of a card transaction authorization code from the external payment gateway
-System must validate that the payment amount is a positive numerical value before processing
-The system must trigger a status check to move the account from "suspended" to "normal" if the debt falls below the required threshold
-The transaction must be recorded in a permanent financial audit trail
-
-User Story 4: Generating Merchant Financial Statements
-ID: SA-ACC-04
-Priority: Medium
-Risk: Low
-Estimate: 8 Story Points
-
-Narrative: As an accounting staff member, I want to generate a financial statement for a specific merchant, so that I can provide them with a summary of their orders and payments for a specific timeframe.
-
-Acceptance Criteria:
-System must allow the user to define a "start date" and "end date" for the statement period
-The statement must list all individual invoices (orders) and all recorded payments (bank/card/cheque) chronologically
-The system must calculate and display the total opening balance, total period activity, and final closing balance
-The resulting report must be viewable on-screen with an option to export as a PDF document
+The dashboard must clearly display three figures: Total Credit Limit, Current Outstanding Debt, and Available Credit.
+The "Available Credit" must be a calculated field (Total Limit minus Current Debt).
+The system must provide a warning if the merchant’s current debt is within 10% of their total limit.
+The data must be pulled directly from the SA central database to ensure it reflects the most recent payments processed by the accounting staff.
