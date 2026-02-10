@@ -1,34 +1,41 @@
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import CataloguePage from './pages/CataloguePage';
+import OrdersPage from './pages/OrdersPage';
+import AccountsPage from './pages/AccountsPage';
+import ReportsPage from './pages/ReportsPage';
+
 function App() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-16">
-        <div className="text-center">
-          <h1 className="text-4xl font-bold text-primary-600 mb-4">
-            IPOS-SA
-          </h1>
-          <p className="text-xl text-gray-600 mb-8">
-            InfoPharma Ordering System - Server Application
-          </p>
-          <div className="bg-white rounded-lg shadow-md p-8 max-w-md mx-auto">
-            <h2 className="text-2xl font-semibold text-gray-800 mb-4">
-              Frontend Setup Complete!
-            </h2>
-            <ul className="text-left space-y-2 text-gray-700">
-              <li>React 18 installed</li>
-              <li>Vite configured</li>
-              <li>Tailwind CSS ready</li>
-              <li>React Router installed</li>
-              <li>React Icons available</li>
-            </ul>
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <p className="text-sm text-gray-500">
-                Ready to build upon
-              </p>
+    <Router>
+      <div className="min-h-screen bg-gray-50">
+        {/* Simple Navigation Bar for Testing */}
+        <nav className="bg-primary-600 text-white p-4 shadow-md">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <h1 className="text-xl font-bold">IPOS-SA</h1>
+            <div className="flex gap-4">
+              <Link to="/" className="hover:text-primary-200">Login</Link>
+              <Link to="/dashboard" className="hover:text-primary-200">Dashboard</Link>
+              <Link to="/catalogue" className="hover:text-primary-200">Catalogue</Link>
+              <Link to="/orders" className="hover:text-primary-200">Orders</Link>
+              <Link to="/accounts" className="hover:text-primary-200">Accounts</Link>
+              <Link to="/reports" className="hover:text-primary-200">Reports</Link>
             </div>
           </div>
-        </div>
+        </nav>
+
+        {/* Routes */}
+        <Routes>
+          <Route path="/" element={<LoginPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/catalogue" element={<CataloguePage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/accounts" element={<AccountsPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
+        </Routes>
       </div>
-    </div>
+    </Router>
   );
 }
 
