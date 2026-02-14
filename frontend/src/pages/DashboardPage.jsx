@@ -1,23 +1,48 @@
+import { useAuth } from '../context/AuthContext';
+import MerchantDashboard from '../components/accounts/MerchantDashboard';
+import AdminDashboard from '../components/accounts/AdminDashboard';
+import DirectorDashboard from '../components/accounts/DirectorDashboard';
+import ManagerDashboard from '../components/accounts/ManagerDashboard';
+
 function DashboardPage() {
+  const { user } = useAuth();
+
+  // render a different dashboard based on who is logged in
+  // each role has different priorities and needs different information upfront
+  const renderDashboard = () => {
+    switch (user?.role) {
+      case 'merchant':
+        return <MerchantDashboard />;
+      case 'admin':
+        return <AdminDashboard />;
+      case 'director':
+        return <DirectorDashboard />;
+      case 'manager':
+        return <ManagerDashboard />;
+      default:
+        return <p>Unknown role - please contact your administrator</p>;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="font-semibold text-gray-700 mb-2">Catalogue</h3>
-            <p className="text-gray-600">Browse products</p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="font-semibold text-gray-700 mb-2">Orders</h3>
-            <p className="text-gray-600">View order history</p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="font-semibold text-gray-700 mb-2">Account</h3>
-            <p className="text-gray-600">Manage account</p>
-          </div>
-        </div>
+    <div>
+      {/* Page header - shows personalised greeting */}
+      <div style={{ marginBottom: '2rem' }}>
+        <h1 style={{
+          fontSize: '1.5rem',
+          fontWeight: '700',
+          color: '#0f172a',
+          marginBottom: '0.25rem',
+        }}>
+          Welcome back, {user?.name} 👋
+        </h1>
+        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+          Here's what's happening at InfoPharma today
+        </p>
       </div>
+
+      {/* shows the correct dashboard for the logged in role */}
+      {renderDashboard()}
     </div>
   );
 }
