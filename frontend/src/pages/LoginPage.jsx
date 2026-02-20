@@ -7,8 +7,7 @@ import { FiUser, FiLock, FiAlertCircle } from 'react-icons/fi';
 import logo from '../assets/logo.png';
 
 function LoginPage() {
-  // useState stores values that can change - when they change,
-  // the component automatically re-renders to show the new value
+
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -26,7 +25,7 @@ function LoginPage() {
   const navigate = useNavigate();
 
   // This runs when the user clicks the Sign In button
-  // async means it can wait for things (like API calls) without freezing the page
+  
 
   const handleLogin = async (e) => {
     // Stop the browser from refreshing the page
@@ -36,9 +35,7 @@ function LoginPage() {
     // Show the loading spinner on the button
     setIsLoading(true);
 
-    // Artificial delay to simulate a real API call
-
-    // Makes the app feel more realistic during development
+  
 
     // TODO: Remove this when real backend is connected
 
@@ -73,8 +70,7 @@ function LoginPage() {
       fontFamily: "'Inter', -apple-system, sans-serif"
     }}>
 
-      {/* These are decorative blurred circles in the background
-          They give the page a modern glowing effect - purely visual */}
+
       <div style={{
         position: 'fixed',
         top: '-10rem',
