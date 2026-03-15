@@ -34,7 +34,9 @@ class Merchant(SQLModel, table=True):
     address: str
     credit_limit: Decimal = Field(max_digits=12, decimal_places=2)
     discount_plan_type: DiscountPlanType
-    fixed_discount_rate: Decimal | None = Field(default=None, max_digits=5, decimal_places=2)
+    fixed_discount_rate: Decimal | None = Field(
+        default=None, max_digits=5, decimal_places=2
+    )
     account_status: AccountStatus = Field(default=AccountStatus.NORMAL)
 
     status_1st_reminder: ReminderStatus = Field(default=ReminderStatus.NO_NEED)
