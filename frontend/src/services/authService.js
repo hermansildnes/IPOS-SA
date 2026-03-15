@@ -6,7 +6,6 @@ import { apiClient, setAuthToken, clearAuthToken } from './apiClient';
 
 // Login function - authenticates a user with username and password
 // Calls POST /api/auth/login
-// Returns the user data if successful, throws error if failed
 export async function login(username, password) {
   try {
 
@@ -32,7 +31,7 @@ export async function login(username, password) {
 }
 
 // Logout function - clears the auth token and logs out the user
-// Calls POST /api/auth/logout (currently a stub in backend)
+
 export async function logout() {
   try {
     // Call backend logout endpoint 
@@ -48,34 +47,22 @@ export async function logout() {
 // Get current user function - fetches the logged-in user's details
 // Calls GET /api/auth/me
 // Returns user object with id, username, email, role
-// will fall back to mock user until backend is fully implemented
+
+
+
+// Calls GET /api/auth/me
+// Returns user object with id, username, email, role
 
 export async function getCurrentUser() {
-  try {
-    // Try to call backend /me endpoint
-    const user = await apiClient.get('/auth/me');
-    return user;
-  } catch (error) {
-    // Backend auth not fully implemented yet AT time of writing
-    // Return a mock user based on the stored token for development
-  
-    console.warn('Backend /auth/me not implemented, using mock user for development');
-    
-    // For now, return a mock admin user
+  // Call backend /me endpoint to get current user
 
-    return {
-      id: '00000000-0000-0000-0000-000000000001',
-      username: 'admin',
-      email: 'admin@infopharma.com',
-      role: 'admin',
-      is_active: true,
-    };
-  }
+  // This endpoint requires authentication (uses the token from localStorage)
+ 
+  const user = await apiClient.get('/auth/me');
+  return user;
 }
-
-// check if user is authenticated
-// checks if a token exists in localStorage
 
 export function isAuthenticated() {
   return !!localStorage.getItem('access_token');
 }
+

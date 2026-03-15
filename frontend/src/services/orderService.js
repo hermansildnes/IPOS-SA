@@ -39,13 +39,8 @@ function convertOrderItemToBackend(item) {
 
 /**
  * Create a new order for the logged in merchant
- * 
  * Endpoint: POST /api/orders
  * Auth: Required (merchant role only)
- * 
- * @param {Array} items - Array of { productId: UUID, quantity: number }
- * @returns {Promise} - { success: boolean, orderId?: string, error?: string }
- 
  */
 export async function createOrder(items) {
   try {
@@ -77,13 +72,8 @@ export async function createOrder(items) {
 
 /**
  * Get a single order by ID
- * 
  * Endpoint: GET /api/orders/{order_id}
  * Auth: Required
- * 
- * @param {string} orderId - UUID of the order
- * @returns {Promise} - Order object or null if not found
- *
  */
 export async function getOrderById(orderId) {
   try {
@@ -101,13 +91,9 @@ export async function getOrderById(orderId) {
 
 /**
  * Get all orders for a specific merchant
- * 
+
  * Endpoint: GET /api/merchants/{merchant_id}/orders
  * Auth: Required
- * 
- * @param {string} merchantId - UUID of the merchant
- * @param {string} status - Optional status filter (accepted, processing, dispatched, delivered)
- * @returns {Promise} - Array of orders
  );
  */
 export async function getOrdersByMerchant(merchantId, status = null) {
@@ -142,8 +128,6 @@ export async function getOrdersByMerchant(merchantId, status = null) {
  *   - courier
  *   - courierRef
  *   - expectedDelivery
- * @returns {Promise} - { success: boolean, error?: string }
- ;
  */
 export async function updateOrderStatus(orderId, status, dispatchDetails = {}) {
   try {
