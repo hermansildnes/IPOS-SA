@@ -1,5 +1,9 @@
 from sqlmodel import Session, SQLModel, create_engine
 
+from catalogue.models import Product, StockReceipt
+from merchants.models import Merchant, DiscountTier, Payment
+from orders.models import Order, OrderItem, Invoice
+
 from core.config import settings
 
 engine = create_engine(settings.DATABASE_URL)
