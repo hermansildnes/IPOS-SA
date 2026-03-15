@@ -38,3 +38,5 @@ node_modules/
 
 # Env files
 .env
+CLAUDE.md
+AGENTS.md
