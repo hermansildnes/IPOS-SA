@@ -9,6 +9,7 @@ import AccountsPage from './pages/AccountsPage';
 import AccountDetailPage from './pages/AccountDetailPage';
 import CreateAccountPage from './pages/CreateAccountPage';
 import ReportsPage from './pages/ReportsPage';
+import PlaceOrderPage from './pages/PlaceOrderPage';
 
 // Guards any route that requires the user to be logged in
 // If not logged in, redirects back to the login page
@@ -39,7 +40,9 @@ function App() {
         <Route path="/orders" element={
           <ProtectedRoute><OrdersPage /></ProtectedRoute>
         } />
-
+        <Route path="/orders/new" element={
+          <ProtectedRoute><PlaceOrderPage /></ProtectedRoute>
+        } />
         {/* Accounts routes - list, create new, and individual detail */}
         <Route path="/accounts" element={
           <ProtectedRoute><AccountsPage /></ProtectedRoute>
@@ -54,7 +57,9 @@ function App() {
         <Route path="/reports" element={
           <ProtectedRoute><ReportsPage /></ProtectedRoute>
         } />
-
+        <Route path="/orders" element={
+          <ProtectedRoute><OrdersPage /></ProtectedRoute>
+        } />
         {/* Catch any unknown URLs and send to login */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

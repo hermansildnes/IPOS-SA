@@ -1,22 +1,17 @@
-// Account status values used throughout the app
-
-// Keeping these as constants prevents typos when comparing status strings
-
+// Account status constants
 export const ACCOUNT_STATUS = {
   NORMAL: 'normal',
   SUSPENDED: 'suspended',
   IN_DEFAULT: 'in_default',
 };
 
-// discount plan types as per the IPOS-SA-ACC requirements
-
+// Discount types
 export const DISCOUNT_TYPES = {
   FIXED: 'fixed',
   FLEXIBLE: 'flexible',
 };
 
-// user roles - matches the mock users in AuthContext
-
+// User roles
 export const ROLES = {
   ADMIN: 'admin',
   DIRECTOR: 'director',
@@ -24,22 +19,49 @@ export const ROLES = {
   MERCHANT: 'merchant',
 };
 
-// visual styles for each account status badge
-// centralised here so all components use the same colours
+// Status badge styles
 export const STATUS_STYLES = {
-  normal: {
-    label: 'Normal',
-    color: '#16a34a',
-    bg: '#dcfce7',
+  normal: { bg: '#dcfce7', color: '#166534' },
+  suspended: { bg: '#fef3c7', color: '#92400e' },
+  in_default: { bg: '#fee2e2', color: '#dc2626' },
+};
+
+// Role badge colors
+export const ROLE_COLORS = {
+  admin: '#ef4444',
+  director: '#f59e0b',
+  manager: '#10b981',
+  merchant: '#6366f1',
+};
+
+// Order status constants
+export const ORDER_STATUS = {
+  ACCEPTED: 'accepted',
+  PROCESSING: 'processing',
+  DISPATCHED: 'dispatched',
+  DELIVERED: 'delivered',
+};
+
+// Order status styles
+export const ORDER_STATUS_STYLES = {
+  accepted: {
+    bg: '#dbeafe',
+    color: '#1e40af',
+    label: 'Accepted'
   },
-  suspended: {
-    label: 'Suspended',
-    color: '#d97706',
+  processing: {
     bg: '#fef3c7',
+    color: '#92400e',
+    label: 'Processing'
   },
-  in_default: {
-    label: 'In Default',
-    color: '#dc2626',
-    bg: '#fee2e2',
+  dispatched: {
+    bg: '#e0e7ff',
+    color: '#4338ca',
+    label: 'Dispatched'
+  },
+  delivered: {
+    bg: '#dcfce7',
+    color: '#166534',
+    label: 'Delivered'
   },
 };

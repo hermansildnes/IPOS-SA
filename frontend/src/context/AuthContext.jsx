@@ -1,86 +1,102 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import * as authService from '../services/authService';
 
-// This is the "container" for our login state
-// Any component in the app can access this to check who's logged in
+// Create the context for auth state
 const AuthContext = createContext(null);
 
-// These are our test users for development
-// When the backend is ready, we'll replace this with real API calls
-// Each user has a role which controls what they can see in the app
-const MOCK_USERS = [
-  {
-    id: 1,
-    username: 'admin',
-    password: 'admin123',
-    role: 'admin',
-    name: 'System Admin',
-  },
-  {
-    id: 2,
-    username: 'director',
-    password: 'director123',
-    role: 'director',
-    name: 'Director of Operations',
-  },
-  {
-    id: 3,
-    username: 'manager',
-    password: 'manager123',
-    role: 'manager',
-    name: 'Operations Manager',
-  },
-  {
-    id: 4,
-    username: 'merchant',
-    password: 'merchant123',
-    role: 'merchant',
-    // Using the example merchant name from the project brief
-    name: 'Cosymed Ltd',
-  },
-];
-
-// This wraps the entire app so every page has access to login state
-//like a "global store" for authentication
+// Provider component that wraps the app
+// Manages login state and provides auth functions to all child components
 export function AuthProvider({ children }) {
-  // user = who is currently logged in (null if nobody is logged in)
+  // user = the currently logged in user object (or null if not logged in)
   const [user, setUser] = useState(null);
-  // error = any login error message to show to the user
+  
+  // error = any error message from login attempts
   const [error, setError] = useState('');
+  
+  // loading = true while we're checking if user is already logged in on app start
+  const [loading, setLoading] = useState(true);
 
-  // This runs when someone clicks the login button
-  // Returns true if login worked, false if it didn't
+  // On app startup, check if there's a saved token and restore the user session
+  // This runs once when the app loads
+  useEffect(() => {
+    async function checkAuth() {
+      // Check if user has a token saved in localStorage
+      if (authService.isAuthenticated()) {
+        try {
+          // Try to get the current user from the backend using the saved token
+          const currentUser = await authService.getCurrentUser();
+          setUser(currentUser);
+        } catch (error) {
+          // If the token is invalid or expired, clear it
+          console.error('Session expired or invalid token');
+          authService.logout();
+        }
+      }
+      // Finished checking - app can now render
+      setLoading(false);
+    }
 
+    checkAuth();
+  }, []);
 
-  // TODO: Replace mock check with real API call when backend is ready
-  const login = (username, password) => {
-
-
-    // Check if the username and password match any of our mock users
-    const foundUser = MOCK_USERS.find(
-      (u) => u.username === username && u.password === password
-    );
-
-    if (foundUser) {
-        
-      // Login worked - save the user to state and clear any old errors
-      setUser(foundUser);
-      setError('');
+  // Login function - calls the real backend auth service
+  // Returns true if login succeeded, false if it failed
+  const login = async (username, password) => {
+    setError('');
+    
+    // Call the real auth service (which calls the backend API)
+    const result = await authService.login(username, password);
+    
+    if (result.success) {
+      // Login succeeded - save the user to state
+      setUser(result.user);
       return true;
     } else {
-      // Login failed - show error message to the user
-      setError('Invalid username or password');
+      // Login failed - set the error message
+      setError(result.error || 'Login failed');
       return false;
     }
   };
 
-  // This runs when someone clicks the logout button
-  // Clears everything so the app forgets who was logged in
-  const logout = () => {
+  // Logout function - clears the user and calls backend logout
+  const logout = async () => {
+    await authService.logout();
     setUser(null);
     setError('');
   };
 
-  // Make the user, error, login, and logout available to every component
+  // Show a loading screen while we check if user is logged in
+  // This prevents a flash of the login page before redirecting to dashboad
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f8fafc',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid #e2e8f0',
+            borderTop: '4px solid #6366f1',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 1rem',
+          }} />
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Loading...</p>
+        </div>
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <AuthContext.Provider value={{ user, error, login, logout }}>
       {children}
@@ -88,8 +104,8 @@ export function AuthProvider({ children }) {
   );
 }
 
-// A shortcut hook so components don't have to import AuthContext directly
-// Usage: const { user, login, logout } = useAuth();
+// Custom hook to use auth context
+// Other components use this to access user, login, logout etc.
 export function useAuth() {
   return useContext(AuthContext);
 }
