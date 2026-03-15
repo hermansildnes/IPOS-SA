@@ -7,16 +7,18 @@ from sqlmodel import Field, SQLModel
 
 class Product(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    product_code: str = Field(unique=True, index=True)  # e.g. "100 00001"
+    product_code: str = Field(unique=True, index=True)
     name: str
     description: str
-    package_type: str   # e.g. "box", "bottle"
-    unit: str           # e.g. "Caps", "ml"
+    package_type: str
+    unit: str
     units_per_pack: int
     package_cost: Decimal = Field(max_digits=10, decimal_places=2)
     stock_quantity: int = Field(default=0)
     min_stock_level: int = Field(default=0)
-    restock_percentage: Decimal = Field(default=Decimal("10.00"), max_digits=5, decimal_places=2)
+    restock_percentage: Decimal = Field(
+        default=Decimal("10.00"), max_digits=5, decimal_places=2
+    )
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

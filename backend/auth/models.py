@@ -23,6 +23,7 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -39,3 +40,10 @@ class UserRead(BaseModel):
     email: str
     role: UserRole
     is_active: bool
+
+
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+    role: UserRole

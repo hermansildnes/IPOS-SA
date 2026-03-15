@@ -19,7 +19,9 @@ class Order(SQLModel, table=True):
     order_date: date = Field(default_factory=date.today)
     status: OrderStatus = Field(default=OrderStatus.ACCEPTED)
     total: Decimal = Field(max_digits=12, decimal_places=2)
-    discount_amount: Decimal = Field(default=Decimal("0.00"), max_digits=12, decimal_places=2)
+    discount_amount: Decimal = Field(
+        default=Decimal("0.00"), max_digits=12, decimal_places=2
+    )
     amount_due: Decimal = Field(max_digits=12, decimal_places=2)
     dispatched_by: UUID | None = Field(default=None, foreign_key="user.id")
     dispatched_date: date | None = None
@@ -30,7 +32,6 @@ class Order(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-
 class OrderItem(SQLModel, table=True):
     __tablename__ = "order_item"
 
@@ -38,7 +39,9 @@ class OrderItem(SQLModel, table=True):
     order_id: UUID = Field(foreign_key="order.id")
     product_id: UUID = Field(foreign_key="product.id")
     quantity: int
-    unit_price: Decimal = Field(max_digits=10, decimal_places=2)  # snapshot at order time
+    unit_price: Decimal = Field(
+        max_digits=10, decimal_places=2
+    )  # snapshot at order time
     cost: Decimal = Field(max_digits=12, decimal_places=2)
 
 
@@ -48,6 +51,8 @@ class Invoice(SQLModel, table=True):
     merchant_id: UUID = Field(foreign_key="merchant.id")
     invoice_date: date = Field(default_factory=date.today)
     total_amount: Decimal = Field(max_digits=12, decimal_places=2)
-    discount_amount: Decimal = Field(default=Decimal("0.00"), max_digits=12, decimal_places=2)
+    discount_amount: Decimal = Field(
+        default=Decimal("0.00"), max_digits=12, decimal_places=2
+    )
     amount_due: Decimal = Field(max_digits=12, decimal_places=2)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
