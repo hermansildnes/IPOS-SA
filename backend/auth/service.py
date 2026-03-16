@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 
 from core.config import settings
 from core.database import get_session
+from auth.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
@@ -32,9 +33,7 @@ def create_access_token(user_id: UUID, role: str) -> str:
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     session: Session = Depends(get_session),
-):
-    from auth.models import User
-
+) -> User:
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
@@ -63,7 +62,6 @@ def get_current_user(
 
 
 def authenticate_user(username: str, password: str, session: Session):
-    from auth.models import User
 
     user = session.exec(select(User).where(User.username == username)).first()
     if user is None or not verify_password(password, user.password_hash):
@@ -79,8 +77,6 @@ def authenticate_user(username: str, password: str, session: Session):
 
 
 def create_user(username: str, email: str, password: str, role, session: Session):
-    from auth.models import User
-    from sqlmodel import select
 
     if session.exec(select(User).where(User.username == username)).first():
         raise HTTPException(

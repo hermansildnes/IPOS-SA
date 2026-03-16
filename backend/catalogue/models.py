@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel
 from sqlmodel import Field, SQLModel
 
 
@@ -31,3 +32,32 @@ class StockReceipt(SQLModel, table=True):
     quantity_added: int
     received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     received_by: UUID = Field(foreign_key="user.id")
+
+
+# Request/Response schemas
+
+
+class ProductCreate(BaseModel):
+    product_code: str
+    name: str
+    description: str
+    package_type: str
+    unit: str
+    units_per_pack: int
+    package_cost: Decimal
+    min_stock_level: int = 0
+    restock_percentage: Decimal = Decimal("10.00")
+
+
+class ProductUpdate(BaseModel):
+    product_code: str
+    name: str
+    description: str
+    package_type: str
+    unit: str
+    units_per_pack: int
+    package_cost: Decimal
+
+
+class AddStockRequest(BaseModel):
+    quantity: int

@@ -12,7 +12,7 @@ from merchants.models import (
     MerchantBalanceRead,
     Payment,
     DiscountPlanType,
-    InvoiceCreate
+    InvoiceCreate,
 )
 
 from orders.models import Order, Invoice
@@ -25,20 +25,20 @@ def create_merchant(session: Session, merchant_in: MerchantCreate) -> Merchant:
     if existing_account:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Account number already exists"
+            detail="Account number already exists",
         )
 
     if merchant_in.credit_limit < 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Credit limit cannot be negative"
+            detail="Credit limit cannot be negative",
         )
 
     if merchant_in.discount_plan_type == DiscountPlanType.FIXED:
         if merchant_in.fixed_discount_rate is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Fixed discount rate is required"
+                detail="Fixed discount rate is required",
             )
     else:
         merchant_in.fixed_discount_rate = None
@@ -54,13 +54,14 @@ def get_merchant_by_id(session: Session, merchant_id: UUID) -> Merchant:
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Merchant not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Merchant not found"
         )
     return merchant
 
 
-def update_merchant(session: Session, merchant_id: UUID, merchant_in: MerchantUpdate) -> Merchant:
+def update_merchant(
+    session: Session, merchant_id: UUID, merchant_in: MerchantUpdate
+) -> Merchant:
     merchant = get_merchant_by_id(session, merchant_id)
 
     update_data = merchant_in.model_dump(exclude_unset=True)
@@ -68,14 +69,14 @@ def update_merchant(session: Session, merchant_id: UUID, merchant_in: MerchantUp
     if "credit_limit" in update_data and update_data["credit_limit"] < 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Credit limit cannot be negative"
+            detail="Credit limit cannot be negative",
         )
 
     if update_data.get("discount_plan_type") == DiscountPlanType.FIXED:
         if update_data.get("fixed_discount_rate") is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Fixed discount rate is required"
+                detail="Fixed discount rate is required",
             )
 
     if update_data.get("discount_plan_type") == DiscountPlanType.FLEXIBLE:
@@ -92,12 +93,12 @@ def update_merchant(session: Session, merchant_id: UUID, merchant_in: MerchantUp
     return merchant
 
 
-def calculate_merchant_balance(session: Session, merchant_id: UUID) -> MerchantBalanceRead:
+def calculate_merchant_balance(
+    session: Session, merchant_id: UUID
+) -> MerchantBalanceRead:
     merchant = get_merchant_by_id(session, merchant_id)
 
-    orders = session.exec(
-        select(Order).where(Order.merchant_id == merchant_id)
-    ).all()
+    orders = session.exec(select(Order).where(Order.merchant_id == merchant_id)).all()
 
     total_orders = sum((order.total for order in orders), Decimal("0.00"))
 
@@ -114,30 +115,31 @@ def calculate_merchant_balance(session: Session, merchant_id: UUID) -> MerchantB
         merchant_id=merchant.id,
         credit_limit=merchant.credit_limit,
         outstanding_balance=outstanding_balance,
-        available_credit=available_credit
+        available_credit=available_credit,
     )
+
 
 def get_merchant_orders(session: Session, merchant_id: UUID):
     get_merchant_by_id(session, merchant_id)
 
-    return session.exec(
-        select(Order).where(Order.merchant_id == merchant_id)
-    ).all()
+    return session.exec(select(Order).where(Order.merchant_id == merchant_id)).all()
 
-def create_invoice(session: Session, merchant_id: UUID, invoice_in: InvoiceCreate) -> Invoice:
+
+def create_invoice(
+    session: Session, merchant_id: UUID, invoice_in: InvoiceCreate
+) -> Invoice:
     get_merchant_by_id(session, merchant_id)
 
     order = session.get(Order, invoice_in.order_id)
     if not order:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
         )
 
     if order.merchant_id != merchant_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Order does not belong to this merchant"
+            detail="Order does not belong to this merchant",
         )
 
     existing_invoice = session.exec(
@@ -147,13 +149,10 @@ def create_invoice(session: Session, merchant_id: UUID, invoice_in: InvoiceCreat
     if existing_invoice:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invoice already exists for this order"
+            detail="Invoice already exists for this order",
         )
 
-    invoice = Invoice(
-        merchant_id=merchant_id,
-        **invoice_in.model_dump()
-    )
+    invoice = Invoice(merchant_id=merchant_id, **invoice_in.model_dump())
     session.add(invoice)
     session.commit()
     session.refresh(invoice)
@@ -163,6 +162,4 @@ def create_invoice(session: Session, merchant_id: UUID, invoice_in: InvoiceCreat
 def get_merchant_invoices(session: Session, merchant_id: UUID):
     get_merchant_by_id(session, merchant_id)
 
-    return session.exec(
-        select(Invoice).where(Invoice.merchant_id == merchant_id)
-    ).all()
+    return session.exec(select(Invoice).where(Invoice.merchant_id == merchant_id)).all()

@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel
 from sqlmodel import Field, SQLModel
 
 
@@ -56,3 +57,23 @@ class Invoice(SQLModel, table=True):
     )
     amount_due: Decimal = Field(max_digits=12, decimal_places=2)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# Request/Response schemas
+
+
+class CreateOrderItem(BaseModel):
+    product_id: UUID
+    quantity: int
+
+
+class CreateOrderRequest(BaseModel):
+    items: list[CreateOrderItem]
+
+
+class UpdateOrderStatusRequest(BaseModel):
+    status: OrderStatus
+    dispatched_by: UUID | None = None
+    courier: str | None = None
+    courier_ref: str | None = None
+    expected_delivery: date | None = None
