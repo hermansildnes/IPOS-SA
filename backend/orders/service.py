@@ -1,8 +1,4 @@
-"""
-logic for creating, retrieving and updating orders.
-all database operations and validation occur here.
-routers wil call these functions
-"""
+
 
 from datetime import date
 from decimal import Decimal
@@ -16,12 +12,8 @@ from orders.models import Order, OrderItem, Invoice, OrderStatus
 
 
 def calculate_discount(merchant: Merchant, order_total: Decimal) -> Decimal:
-    """
-    Calculate discount amount based on merchant's discount plan.
+    """ Calculate discount amount based on merchant's discount plan.
     (Currently simplified - full implementation would query all orders this month)
-    Args:
-        merchant: The merchant placing the order
-        order_total: Total cost of order before discount
     """
     if merchant.discount_plan_type == DiscountPlanType.FIXED:
         # fixed discount: apply the rate to rder total.
@@ -40,30 +32,7 @@ def create_order(
     merchant_id: UUID,
     items: list[dict],  # Format: [{"product_id": UUID, "quantity": int}, ...]
 ) -> Order:
-    """
-    Create new order for a merchant:
-    1. Validate merchant exists 
-    2. Validate all products exist and have stock
-    3. Calculate order total from product prices and quantities
-    4. Apply merchant's discount
-    5. Check if order would exceed credit limit
-    6. Create Order record
-    7. Create OrderItem records for each product
-    8. Reduce stock quantities
-    9. Create Invoice
-    10. Return the created order
-    
-    Args:
-        session: Database session
-        merchant_id: UUID of merchant placing order
-        items: List of dicts with product_id and quantity
-        
-    Returns:
-        Created Order object
-        
-    Raises:
-        ValueError: If validation fails (merchant not found, insufficient stock, etc.)
-    """
+ 
     
     # step1: get merchant and validate account status
     merchant = session.get(Merchant, merchant_id)

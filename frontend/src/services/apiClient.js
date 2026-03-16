@@ -5,7 +5,7 @@ const API_BASE_URL = 'http://127.0.0.1:8000/api';
 
 // Helper function to get the auth token from localStorage
 // The token is stored when the user logs in
-// Its included in the auth header for protected endpoints
+
 function getAuthToken() {
   return localStorage.getItem('access_token');
 }
@@ -22,7 +22,6 @@ function clearAuthToken() {
 
 // Main API client class
 // Provides methods for GET, POST, PATCH, PUT, DELETE requests
-// Automatically handles authentication headers and JSON parsing
 class ApiClient {
   
   // Generic request method - all other methods use this internally
@@ -34,14 +33,12 @@ class ApiClient {
     // Get the auth token if it exists
     const token = getAuthToken();
     
-    // Set up headers
     const headers = {
       'Content-Type': 'application/json',
       ...options.headers,
     };
     
     // If we have a token, add it to the auth header
-    // Format: "Bearer <token>" as per JWT standard
     if (token) {
       headers['Authorisation'] = `Bearer ${token}`;
     }
@@ -54,13 +51,12 @@ class ApiClient {
     
     // If response is not ok (status 400-599), throw an error
     if (!response.ok) {
-      // Try to parse error message from response body
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.detail || `HTTP ${response.status}: ${response.statusText}`;
       throw new Error(errorMessage);
     }
     
-    // If response is 204 No Content, return null
+    // If response is No Content, return null
     if (response.status === 204) {
       return null;
     }
@@ -80,7 +76,7 @@ class ApiClient {
   
   // POST request wrapper
   // Used for creating new resources
-  // Example: apiClient.post('/orders', { items: [...] })
+
   async post(endpoint, data) {
     return this.request(endpoint, {
       method: 'POST',
@@ -90,7 +86,7 @@ class ApiClient {
   
   // PATCH request wrapper
   // Used for partially updating existing resources
-  // Example: apiClient.patch('/orders/123/status', { status: 'dispatched' })
+
   async patch(endpoint, data) {
     return this.request(endpoint, {
       method: 'PATCH',
@@ -100,7 +96,7 @@ class ApiClient {
   
   // PUT request wrapper
   // Used for fully replacing existing resources
-  // Example: apiClient.put('/products/123', { name: 'New Name', ... })
+
   async put(endpoint, data) {
     return this.request(endpoint, {
       method: 'PUT',
@@ -110,7 +106,7 @@ class ApiClient {
   
   // DELETE request wrapper
   // Used for deleting resources
-  // Example: apiClient.delete('/products/123')
+
   async delete(endpoint) {
     return this.request(endpoint, {
       method: 'DELETE',

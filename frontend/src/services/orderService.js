@@ -5,8 +5,7 @@
 import { apiClient } from './apiClient';
 
 // Helper function to convert backend snake_case to frontend camelCase
-// Backend returns: { order_id, merchant_id, order_date, ... }
-// Frontend expects: { orderId, merchantId, orderDate, ... }
+
 
 function convertOrderFromBackend(order) {
   return {
@@ -28,8 +27,7 @@ function convertOrderFromBackend(order) {
 }
 
 // Helper function to convert frontend camelCase to backend snake_case
-// Frontend sends: { productId, ... }
-// Backend expects: { product_id, ... }
+
 function convertOrderItemToBackend(item) {
   return {
     product_id: item.productId,
@@ -91,7 +89,6 @@ export async function getOrderById(orderId) {
 
 /**
  * Get all orders for a specific merchant
-
  * Endpoint: GET /api/merchants/{merchant_id}/orders
  * Auth: Required
  );
@@ -121,13 +118,6 @@ export async function getOrdersByMerchant(merchantId, status = null) {
  * Update order status (Admin/Manager only) 
  * Endpoint: PATCH /api/orders/{order_id}/status
  * Auth: Required (admin or manager role only)
- * @param {string} orderId - UUID of the order
- * @param {string} status - New status (accepted, processing, dispatched, delivered)
- * @param {object} dispatchDetails - Required when status = dispatched
- *   - dispatchedBy
- *   - courier
- *   - courierRef
- *   - expectedDelivery
  */
 export async function updateOrderStatus(orderId, status, dispatchDetails = {}) {
   try {

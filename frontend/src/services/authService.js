@@ -10,8 +10,7 @@ export async function login(username, password) {
   try {
 
     // Call the backend login endpoint
-    // Backend expects: { username: string, password: string }
-    // Backend returns: { access_token: string, token_type: "bearer" }
+ 
     const response = await apiClient.post('/auth/login', {
       username,
       password,
@@ -46,12 +45,7 @@ export async function logout() {
 }
 // Get current user function - fetches the logged-in user's details
 // Calls GET /api/auth/me
-// Returns user object with id, username, email, role
 
-
-
-// Calls GET /api/auth/me
-// Returns user object with id, username, email, role
 
 export async function getCurrentUser() {
   // Call backend /me endpoint to get current user
