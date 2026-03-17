@@ -9,7 +9,7 @@ import {
   FiCheckCircle,
   FiArrowLeft,
 } from 'react-icons/fi';
-import { createOrder } from '../services/orderService';
+import { placeOrder } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 
 function PlaceOrderPage() {
@@ -71,7 +71,7 @@ function PlaceOrderPage() {
     }));
     
     // Call the backend API
-    const result = await createOrder(items);
+    const result = await placeOrder(items);
     
     if (result.success) {
       // Success - show message and redirect after delay

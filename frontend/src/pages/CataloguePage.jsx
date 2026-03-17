@@ -8,7 +8,8 @@ import {
   FiPlus,
   FiMinus,
 } from 'react-icons/fi';
-import { getAllProducts, searchProducts } from '../services/catalogueService';
+import { getCatalogue } from '../services/orderService';
+import { searchProducts } from '../services/catalogueService';
 
 function CataloguePage() {
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ function CataloguePage() {
   // Load products function
   async function loadProducts() {
     setLoading(true);
-    const data = await getAllProducts();
+    const data = await getCatalogue();
     setProducts(data);
     setLoading(false);
   }

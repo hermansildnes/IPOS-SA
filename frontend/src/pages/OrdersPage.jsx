@@ -8,7 +8,7 @@ import {
   FiTruck,
   FiCheckCircle,
 } from 'react-icons/fi';
-import { getOrdersByMerchant } from '../services/orderService';
+import { viewPreviousOrders } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import { ORDER_STATUS, ORDER_STATUS_STYLES } from '../utils/constants';
 
@@ -30,7 +30,7 @@ function OrdersPage() {
       const merchantId = user?.id;
       
       if (merchantId) {
-        const data = await getOrdersByMerchant(merchantId, statusFilter);
+        const data = await viewPreviousOrders(merchantId, statusFilter);
         setOrders(data);
       }
       

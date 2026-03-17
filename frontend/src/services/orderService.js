@@ -1,12 +1,10 @@
-// Orders Service
-// Wrapper methods that call backend /api/orders endpoints
-// Each function corresponds to a specific API endpoint
+// Order Service
+// Implements ISAOrderAPI interface from architecture diagram
+// Each function corresponds to a specific backend API endpoint
 
 import { apiClient } from './apiClient';
 
-// Helper function to convert backend snake_case to frontend camelCase
-
-
+// Helper to convert backend snake_case to frontend camelCase
 function convertOrderFromBackend(order) {
   return {
     id: order.id,
@@ -16,51 +14,46 @@ function convertOrderFromBackend(order) {
     total: parseFloat(order.total),
     discountAmount: parseFloat(order.discount_amount),
     amountDue: parseFloat(order.amount_due),
-    dispatchedBy: order.dispatched_by,
-    dispatchedDate: order.dispatched_date,
-    courier: order.courier,
-    courierRef: order.courier_ref,
-    expectedDelivery: order.expected_delivery,
-    createdAt: order.created_at,
-    updatedAt: order.updated_at,
+    items: order.items || [],
+    dispatchDetails: order.dispatch_details || null,
   };
 }
 
-// Helper function to convert frontend camelCase to backend snake_case
-
+// Helper to convert frontend camelCase to backend snake_case
 function convertOrderItemToBackend(item) {
   return {
-    product_id: item.productId,
+    product_id: item.productId || item.productID,
     quantity: item.quantity,
   };
 }
 
 /**
- * Create a new order for the logged in merchant
+ * Place a new order (ISAOrderAPI.placeOrder)
  * Endpoint: POST /api/orders
- * Auth: Required (merchant role only)
- */
-export async function createOrder(items) {
+ * Auth: Required (merchant only)
+*/
+export async function placeOrder(items) {
   try {
-    // Convert items from camelCase to snake_case for backend
+    // Validate items
+    if (!items || items.length === 0) {
+      return {
+        success: false,
+        error: 'Order must contain at least one item'
+      };
+    }
+    
+    // Convert to backend format
     const backendItems = items.map(convertOrderItemToBackend);
     
     // Call backend API
-    // POST /api/orders with body: { items: [...] }
-    const response = await apiClient.post('/orders', {
-      items: backendItems
-    });
+    const order = await apiClient.post('/orders', { items: backendItems });
     
     return {
       success: true,
-      orderId: response.order_id,
-      message: response.message,
-      total: response.total,
-      discount: response.discount,
-      amountDue: response.amount_due,
+      orderId: order.id,
+      order: convertOrderFromBackend(order)
     };
   } catch (error) {
-    // Backend returned an error (validation failed, insufficient stock, etc.)
     return {
       success: false,
       error: error.message
@@ -69,78 +62,118 @@ export async function createOrder(items) {
 }
 
 /**
- * Get a single order by ID
+ * Track order progress (ISAOrderAPI.trackOrderProgress)
  * Endpoint: GET /api/orders/{order_id}
  * Auth: Required
  */
-export async function getOrderById(orderId) {
+export async function trackOrderProgress(orderID) {
   try {
-    // Call backend API
-    // GET /api/orders/{order_id}
-    const order = await apiClient.get(`/orders/${orderId}`);
+    const order = await apiClient.get(`/orders/${orderID}`);
+    const converted = convertOrderFromBackend(order);
     
-    // Convert from snake_case to camelCase
+    // Return status as string per interface specification
+    return converted.status;
+  } catch (error) {
+    console.error('Failed to track order:', error);
+    return 'unknown';
+  }
+}
+
+/**
+ * Get full order details by ID (extended functionality)
+ */
+export async function getOrderDetails(orderID) {
+  try {
+    const order = await apiClient.get(`/orders/${orderID}`);
     return convertOrderFromBackend(order);
   } catch (error) {
-    console.error('Failed to get order:', error);
+    console.error('Failed to get order details:', error);
     return null;
   }
 }
 
 /**
- * Get all orders for a specific merchant
+ * Query merchant balance (ISAOrderAPI.queryBalance)
+
+ * Endpoint: GET /api/merchants/{merchant_id}/balance
+ * Auth: Required
+ */
+export async function queryBalance(merchantID) {
+  try {
+    const balance = await apiClient.get(`/merchants/${merchantID}/balance`);
+    // Return available credit as integer per interface specification
+    return Math.floor(parseFloat(balance.available_credit));
+  } catch (error) {
+    console.error('Failed to query balance:', error);
+    return 0;
+  }
+}
+
+/**
+ * View previous orders for a merchant (ISAOrderAPI.viewPreviousOrders)
  * Endpoint: GET /api/merchants/{merchant_id}/orders
  * Auth: Required
- );
  */
-export async function getOrdersByMerchant(merchantId, status = null) {
+export async function viewPreviousOrders(merchantID, status = null) {
   try {
-    // Build the endpoint URL
-    let endpoint = `/merchants/${merchantId}/orders`;
+    const endpoint = status 
+      ? `/merchants/${merchantID}/orders?status=${status}`
+      : `/merchants/${merchantID}/orders`;
     
-    // Add status filter if provided
-    if (status) {
-      endpoint += `?status=${status}`;
-    }
-    
-    // Call backend API
     const orders = await apiClient.get(endpoint);
-    
-    // Convert each order from snake_case to camelCase
     return orders.map(convertOrderFromBackend);
   } catch (error) {
-    console.error('Failed to get merchant orders:', error);
+    console.error('Failed to view previous orders:', error);
     return [];
   }
 }
 
 /**
- * Update order status (Admin/Manager only) 
- * Endpoint: PATCH /api/orders/{order_id}/status
- * Auth: Required (admin or manager role only)
+ * Get catalogue of all products (ISAOrderAPI.getCatalogue)
+ * Endpoint: GET /api/catalogue
+ * Auth: Not required
  */
-export async function updateOrderStatus(orderId, status, dispatchDetails = {}) {
+export async function getCatalogue() {
   try {
-    // Build request body
-    const body = {
-      status,
-      // Convert camelCase to snake_case for backend
-      dispatched_by: dispatchDetails.dispatchedBy || null,
-      courier: dispatchDetails.courier || null,
-      courier_ref: dispatchDetails.courierRef || null,
-      expected_delivery: dispatchDetails.expectedDelivery || null,
-    };
+    const products = await apiClient.get('/catalogue');
+    return products.map(product => ({
+      id: product.id,
+      productCode: product.product_code,
+      name: product.name,
+      description: product.description,
+      packageType: product.package_type,
+      unit: product.unit,
+      unitsPerPack: product.units_per_pack,
+      packageCost: parseFloat(product.package_cost),
+      stockQuantity: product.stock_quantity,
+    }));
+  } catch (error) {
+    console.error('Failed to get catalogue:', error);
+    return [];
+  }
+}
+
+/**
+ * Update order status (admin/manager only)
+
+ * Endpoint: PATCH /api/orders/{order_id}/status
+ * Auth: Required (admin/manager only)
+ */
+export async function updateOrderStatus(orderID, status, dispatchDetails = null) {
+  try {
+    const body = { status };
     
-    // Call backend API
-    // PATCH /api/orders/{order_id}/status
-    const response = await apiClient.patch(`/orders/${orderId}/status`, body);
+    if (dispatchDetails) {
+      body.dispatch_details = {
+        courier_name: dispatchDetails.courierName,
+        tracking_number: dispatchDetails.trackingNumber,
+        expected_delivery_date: dispatchDetails.expectedDeliveryDate,
+      };
+    }
     
-    return {
-      success: true,
-      message: response.message,
-      orderId: response.order_id,
-      newStatus: response.new_status,
-    };
+    await apiClient.patch(`/orders/${orderID}/status`, body);
+    
+    return { success: true };
   } catch (error) {
     return {
       success: false,
@@ -149,10 +182,12 @@ export async function updateOrderStatus(orderId, status, dispatchDetails = {}) {
   }
 }
 
-// Export all functions as named exports
 export default {
-  createOrder,
-  getOrderById,
-  getOrdersByMerchant,
+  placeOrder,
+  trackOrderProgress,
+  getOrderDetails,
+  queryBalance,
+  viewPreviousOrders,
+  getCatalogue,
   updateOrderStatus,
 };

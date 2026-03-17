@@ -1,62 +1,80 @@
 // Authentication Service
-// Handles login, logout, and getting current user info
-// wraps the backend /api/auth endpoints
+// Implements ISALoginAPI interface from architecture diagram
+// Handles login, logout, and user session management
 
 import { apiClient, setAuthToken, clearAuthToken } from './apiClient';
 
-// Login function - authenticates a user with username and password
-// Calls POST /api/auth/login
-export async function login(username, password) {
+/**
+ * Merchant login (ISALoginAPI.merchantLogin)
+ * Endpoint: POST /api/auth/login
+  */
+export async function merchantLogin(username, password) {
   try {
-
     // Call the backend login endpoint
- 
     const response = await apiClient.post('/auth/login', {
       username,
       password,
     });
     
-    // Save the token to localStorage so it persists across page refreshes
+    // Save the token to localStorage
     setAuthToken(response.access_token);
     
-    // Get the full user details using the token we just received
+    // Get the full user details using the token
     const user = await getCurrentUser();
     
     return { success: true, user };
   } catch (error) {
-    // If login fails, return error message
     return { success: false, error: error.message };
   }
 }
 
-// Logout function - clears the auth token and logs out the user
-
-export async function logout() {
+/**
+ * Merchant disconnect/logout (ISALoginAPI.merchantDisconnect)
+ * Endpoint: POST /api/auth/logout
+ */
+export async function merchantDisconnect(merchantID = null) {
   try {
-    // Call backend logout endpoint 
+    // Call backend logout endpoint
     await apiClient.post('/auth/logout');
-  } catch (error) {
-    // Even if backend call fails, we still clear the token locally
-    console.error('Logout error:', error);
-  } finally {
-    // Always clear the token from localStorage
+    
+    // Clear the token from localStorage
     clearAuthToken();
+    
+    return true;
+  } catch (error) {
+    console.error('Logout error:', error);
+    // Even if backend call fails, clear token locally
+    clearAuthToken();
+    return false;
   }
 }
-// Get current user function - fetches the logged-in user's details
-// Calls GET /api/auth/me
 
-
+/**
+ * Get current logged-in user details
+ * Endpoint: GET /api/auth/me
+ */
 export async function getCurrentUser() {
-  // Call backend /me endpoint to get current user
-
-  // This endpoint requires authentication (uses the token from localStorage)
- 
   const user = await apiClient.get('/auth/me');
   return user;
 }
 
+/**
+ * Check if user is authenticated
+ */
 export function isAuthenticated() {
   return !!localStorage.getItem('access_token');
 }
 
+// Aliases for backward compatibility
+export const login = merchantLogin;
+export const logout = merchantDisconnect;
+
+export default {
+  merchantLogin,
+  merchantDisconnect,
+  getCurrentUser,
+  isAuthenticated,
+  // Aliases
+  login,
+  logout,
+};

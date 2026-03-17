@@ -1,5 +1,5 @@
 // Merchant Service
-// Wrapper methods for /api/merchants endpoints
+// Implements ISAMemberAPI interface and merchant management functions
 // Each function corresponds to a specific backend API endpoint
 
 import { apiClient } from './apiClient';
@@ -48,7 +48,50 @@ function convertMerchantToBackend(data) {
   };
 }
 
+/**
+ * Send commercial application (ISAMemberAPI.sendCommercialApplication)
+ * Endpoint: POST /api/commercial-applications
+ * Auth: Not required (public endpoint for IPOS-PU integration)
+ */
+export async function sendCommercialApplication(regNumber, type, address, email, details) {
+  try {
+    await apiClient.post('/commercial-applications', {
+      reg_number: regNumber,
+      type,
+      address,
+      email,
+      details,
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Failed to send commercial application:', error);
+    return false;
+  }
+}
 
+/**
+ * Check commercial application status (ISAMemberAPI.checkCommercialApplication)
+ * Endpoint: GET /api/commercial-applications/check?reg_number={regNumber}
+ * Auth: Not required (public endpoint)
+ */
+export async function checkCommercialApplication(regNumber) {
+  try {
+    const result = await apiClient.get(`/commercial-applications/check?reg_number=${regNumber}`);
+    
+    // Return true if found and approved
+    return result.found && result.status === 'approved';
+  } catch (error) {
+    console.error('Failed to check commercial application:', error);
+    return false;
+  }
+}
+
+/**
+ * Get all merchants
+ * Endpoint: GET /api/merchants
+ * Auth: Required (admin/manager/director only)
+ */
 export async function getAllMerchants() {
   try {
     const merchants = await apiClient.get('/merchants');
@@ -61,8 +104,8 @@ export async function getAllMerchants() {
 
 /**
  * Get a single merchant by ID
- 
  * Endpoint: GET /api/merchants/{merchant_id}
+ * Auth: Required
  */
 export async function getMerchantById(merchantId) {
   try {
@@ -76,9 +119,8 @@ export async function getMerchantById(merchantId) {
 
 /**
  * Get merchants filtered by account status
- 
  * Endpoint: GET /api/merchants?status={status}
-
+ * Auth: Required
  */
 export async function getMerchantsByStatus(status) {
   try {
@@ -94,10 +136,10 @@ export async function getMerchantsByStatus(status) {
 /**
  * Create a new merchant account
  * Endpoint: POST /api/merchants
+ * Auth: Required (admin only)
  */
 export async function createMerchant(merchantData) {
   try {
-    // Validate required fields
     const required = ['companyName', 'contactName', 'contactEmail', 'address', 'creditLimit', 'discountPlanType'];
     for (const field of required) {
       if (!merchantData[field]) {
@@ -108,10 +150,7 @@ export async function createMerchant(merchantData) {
       }
     }
     
-    // Convert to backend format
     const backendData = convertMerchantToBackend(merchantData);
-    
-    // Call backend API
     const merchant = await apiClient.post('/merchants', backendData);
     
     return {
@@ -129,10 +168,10 @@ export async function createMerchant(merchantData) {
 /**
  * Update an existing merchant
  * Endpoint: PATCH /api/merchants/{merchant_id}
+ * Auth: Required (admin/manager)
  */
 export async function updateMerchant(merchantId, updates) {
   try {
-    // Convert to backend format
     const backendUpdates = {};
     
     if (updates.companyName) backendUpdates.company_name = updates.companyName;
@@ -144,7 +183,6 @@ export async function updateMerchant(merchantId, updates) {
     if (updates.discountPlanType) backendUpdates.discount_plan_type = updates.discountPlanType;
     if (updates.fixedDiscountRate !== undefined) backendUpdates.fixed_discount_rate = updates.fixedDiscountRate;
     
-    // Call backend API
     const merchant = await apiClient.patch(`/merchants/${merchantId}`, backendUpdates);
     
     return {
@@ -162,6 +200,7 @@ export async function updateMerchant(merchantId, updates) {
 /**
  * Get merchant's current balance/debt
  * Endpoint: GET /api/merchants/{merchant_id}/balance
+ * Auth: Required
  */
 export async function getMerchantBalance(merchantId) {
   try {
@@ -184,6 +223,7 @@ export async function getMerchantBalance(merchantId) {
 /**
  * Reinstate a merchant account from 'in_default' status
  * Endpoint: POST /api/merchants/{merchant_id}/reinstate
+ * Auth: Required (director only)
  */
 export async function reinstateAccount(merchantId, reason, directorId) {
   try {
@@ -209,6 +249,8 @@ export async function reinstateAccount(merchantId, reason, directorId) {
 }
 
 export default {
+  sendCommercialApplication,
+  checkCommercialApplication,
   getAllMerchants,
   getMerchantById,
   getMerchantsByStatus,
