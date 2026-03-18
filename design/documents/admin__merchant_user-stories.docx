@@ -1,0 +1,83 @@
+User Story 1: Reinstating Defaulted Accounts
+ID: SA-DIR-01
+Priority: High
+Risk: High
+Estimate: 5 Story Points
+
+Narrative: As a Director of Operations, I want to manually override the status of an account flagged as in default, so that a merchant can resume ordering after long-term debt issues are resolved.
+
+Acceptance Criteria:
+The system must restrict this functionality specifically to users with Director-level credentials.
+The system must require a mandatory "reason for reinstatement" text entry before the status can be changed.
+Upon execution, the merchant's status must change from "in default" to "normal" and the restriction on placing new orders must be lifted.
+The system must log the Director's ID and timestamp the action for the annual audit trail.
+
+User Story 2: Managing System-Wide Discount Plans
+ID: SA-DIR-02
+Priority: Medium
+Risk: Medium
+Estimate: 8 Story Points
+
+Narrative: As a Director of Operations, I want to configure the parameters for fixed and flexible discount plans, so that the system automatically applies the correct pricing logic to merchant orders.
+
+Acceptance Criteria:
+The system must allow the Director to set the percentage for "Fixed" discounts applied to specific merchant categories.
+The system must allow the definition of "Flexible" discount thresholds (e.g., 5% off for orders exceeding £1000).
+The system must ensure that only one discount plan type can be active for a single merchant at any given time.
+The updated logic must be immediately accessible to the order validation engine to ensure correct invoicing.
+
+User Story 3: Global Turnover Reporting
+ID: SA-DIR-03
+Priority: Medium
+Risk: Low
+Estimate: 13 Story Points
+
+Narrative: As a Director of Operations, I want to generate a high-level turnover report for the entire company, so that I can analyze total sales performance across all merchants and product categories.
+
+Acceptance Criteria:
+The report must aggregate total revenue from all successfully processed orders within a user-defined date range.
+The system must provide a breakdown of turnover by product category (e.g., Antibiotics, Pain Relief).
+The report must include a comparison between total invoiced amounts and total payments actually received.
+The output must be generated in a high-level summary dashboard format with an option to download as a spreadsheet.
+
+User Story 4: Advanced Product Search and Filtering
+ID: SA-MER-01
+Priority: High
+Risk: Low
+Estimate: 5 Story Points
+
+Narrative: As a merchant, I want to search and filter the product catalogue by name and category, so that I can quickly find the pharmaceutical supplies I need to stock in my pharmacy.
+
+Acceptance Criteria:
+The system must allow keyword searches that match against the product name or description.
+The interface must provide filters for "Package Type" (e.g., box, bottle, vial) and "Category."
+The results must only display items that are currently marked as "active" in the staff catalogue.
+The search must return results within one second to maintain a professional user experience.
+
+User Story 5: Order Status and Tracking
+ID: SA-MER-02
+Priority: High
+Risk: Low
+Estimate: 5 Story Points
+
+Narrative: As a merchant, I want to view the real-time status of my submitted orders, so that I can track when my supplies have been accepted, processed, or dispatched.
+
+Acceptance Criteria:
+The system must provide an "Order History" view where each order is tagged with its current state (Accepted, Processing, Dispatched, or Delivered).
+For orders marked as "Dispatched," the system must display the courier name and the tracking number provided by the operations staff.
+The merchant must be able to view a detailed breakdown of the items included in each historical order.
+The system must display an "Invoiced" status once the financial department has confirmed the order totals.
+
+User Story 6: Real-time Credit and Debt Overview
+ID: SA-MER-03
+Priority: High
+Risk: Medium
+Estimate: 3 Story Points
+
+Narrative: As a merchant, I want to view my current outstanding debt and remaining credit limit, so that I can ensure I have sufficient funds to place a new order.
+
+Acceptance Criteria:
+The dashboard must clearly display three figures: Total Credit Limit, Current Outstanding Debt, and Available Credit.
+The "Available Credit" must be a calculated field (Total Limit minus Current Debt).
+The system must provide a warning if the merchant’s current debt is within 10% of their total limit.
+The data must be pulled directly from the SA central database to ensure it reflects the most recent payments processed by the accounting staff.
