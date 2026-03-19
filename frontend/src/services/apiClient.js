@@ -51,6 +51,11 @@ class ApiClient {
     
     // If response is not ok (status 400-599), throw an error
     if (!response.ok) {
+      // If 401 Unauthorised, clear the token
+      if (response.status === 401) {
+        clearAuthToken();
+      }
+      
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.detail || `HTTP ${response.status}: ${response.statusText}`;
       throw new Error(errorMessage);

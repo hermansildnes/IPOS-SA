@@ -19,44 +19,47 @@ export function AuthProvider({ children }) {
   // On app startup, check if there's a saved token and restore the user session
   // This runs once when the app loads
   useEffect(() => {
-    async function checkAuth() {
-      // Check if user has a token saved in localStorage
-      if (authService.isAuthenticated()) {
-        try {
-          // Try to get the current user from the backend using the saved token
-          const currentUser = await authService.getCurrentUser();
-          setUser(currentUser);
-        } catch (error) {
-          // If the token is invalid or expired, clear it
-          console.error('Session expired or invalid token');
-          authService.logout();
-        }
+  async function checkAuth() {
+    if (authService.isAuthenticated()) {
+      try {
+        const currentUser = await authService.getCurrentUser();
+        setUser(currentUser);
+      } catch (error) {
+        console.error('Session expired or invalid token');
+        // Clear invalid token
+        authService.logout();
+        setUser(null);
+        setError('');
       }
-      // Finished checking - app can now render
-      setLoading(false);
     }
+    setLoading(false);
+  }
 
-    checkAuth();
-  }, []);
+  checkAuth();
+}, []);
 
   // Login function - calls the real backend auth service
   // Returns true if login succeeded, false if it failed
   const login = async (username, password) => {
-    setError('');
-    
-    // Call the real auth service (which calls the backend API)
+  // Clear any previous errors
+  setError('');
+  setUser(null);
+  
+  try {
     const result = await authService.login(username, password);
     
     if (result.success) {
-      // Login succeeded - save the user to state
       setUser(result.user);
       return true;
     } else {
-      // Login failed - set the error message
       setError(result.error || 'Login failed');
       return false;
     }
-  };
+  } catch (err) {
+    setError('Login failed. Please try again.');
+    return false;
+  }
+};
 
   // Logout function - clears the user and calls backend logout
   const logout = async () => {

@@ -10,21 +10,27 @@ import { apiClient, setAuthToken, clearAuthToken } from './apiClient';
   */
 export async function merchantLogin(username, password) {
   try {
-    // Call the backend login endpoint
+    // Clear any old token first
+    clearAuthToken();
+    
     const response = await apiClient.post('/auth/login', {
       username,
       password,
     });
     
-    // Save the token to localStorage
+    if (!response || !response.access_token) {
+      return { success: false, error: 'Invalid response from server' };
+    }
+    
     setAuthToken(response.access_token);
     
-    // Get the full user details using the token
     const user = await getCurrentUser();
     
     return { success: true, user };
   } catch (error) {
-    return { success: false, error: error.message };
+    // Make sure token is cleared on error
+    clearAuthToken();
+    return { success: false, error: error.message || 'Login failed' };
   }
 }
 

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from catalogue.models import Product, StockReceipt
 
 
-def get_all_products(session: Session) -> list[Product]:
+def list_catalogue(session: Session) -> list[Product]:
     return list(session.exec(select(Product)).all())
 
 def get_product(product_id: UUID, session: Session) -> Product:

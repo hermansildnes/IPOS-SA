@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getAllMerchants } from '../services/merchantService';
@@ -19,22 +19,40 @@ function AccountsPage() {
   // search and filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  
+  // merchants data state
+  const [allMerchants, setAllMerchants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // get all merchants from our service layer
-  const allMerchants = getAllMerchants();
+  // fetch merchants on component mount
+  useEffect(() => {
+    async function fetchMerchants() {
+      try {
+        setLoading(true);
+        const merchants = await getAllMerchants();
+        setAllMerchants(merchants);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchMerchants();
+  }, []);
 
   // apply search and status filter together - both work simultaneously
-
   const filteredMerchants = allMerchants.filter((merchant) => {
     // check if merchant matches the search query
     const matchesSearch =
-      merchant.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      merchant.accountNumber.includes(searchQuery) ||
-      merchant.contactName.toLowerCase().includes(searchQuery.toLowerCase());
+      merchant.company_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      merchant.account_number?.includes(searchQuery) ||
+      merchant.contact_name?.toLowerCase().includes(searchQuery.toLowerCase());
 
     // check if merchant matches the status filter
     const matchesStatus =
-      statusFilter === 'all' || merchant.status === statusFilter;
+      statusFilter === 'all' || merchant.account_status === statusFilter;
 
     // only show merchants that match BOTH filters
     return matchesSearch && matchesStatus;
@@ -43,10 +61,55 @@ function AccountsPage() {
   // count merchants by status for the summary cards at the top
   const statusCounts = {
     all: allMerchants.length,
-    normal: allMerchants.filter((m) => m.status === 'normal').length,
-    suspended: allMerchants.filter((m) => m.status === 'suspended').length,
-    in_default: allMerchants.filter((m) => m.status === 'in_default').length,
+    normal: allMerchants.filter((m) => m.account_status === 'normal').length,
+    suspended: allMerchants.filter((m) => m.account_status === 'suspended').length,
+    in_default: allMerchants.filter((m) => m.account_status === 'in_default').length,
   };
+
+  // show loading state
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '400px',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid #e2e8f0',
+            borderTop: '4px solid #6366f1',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 1rem',
+          }} />
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Loading accounts...</p>
+        </div>
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // show error state
+  if (error) {
+    return (
+      <div style={{
+        padding: '3rem',
+        textAlign: 'center',
+        color: '#ef4444',
+      }}>
+        <FiAlertCircle size={48} style={{ marginBottom: '1rem' }} />
+        <p style={{ fontWeight: '600', marginBottom: '0.5rem' }}>Failed to load accounts</p>
+        <p style={{ fontSize: '0.875rem' }}>{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -208,10 +271,10 @@ function AccountsPage() {
           </div>
         ) : (
           filteredMerchants.map((merchant, index) => {
-            const statusStyle = STATUS_STYLES[merchant.status];
+            const statusStyle = STATUS_STYLES[merchant.account_status] || STATUS_STYLES.normal;
 
             // calculate available credit for each merchant row
-            const availableCredit = merchant.creditLimit - merchant.currentDebt;
+            const availableCredit = merchant.credit_limit - (merchant.current_debt || 0);
 
             return (
               <div
@@ -245,7 +308,7 @@ function AccountsPage() {
                   flexShrink: 0,
                   marginRight: '1rem',
                 }}>
-                  {merchant.companyName.charAt(0)}
+                  {merchant.company_name?.charAt(0) || 'M'}
                 </div>
 
                 {/* Company name and account number */}
@@ -255,10 +318,10 @@ function AccountsPage() {
                     color: '#0f172a',
                     fontSize: '0.875rem',
                   }}>
-                    {merchant.companyName}
+                    {merchant.company_name}
                   </p>
                   <p style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
-                    #{merchant.accountNumber} · {merchant.contactName}
+                    #{merchant.account_number} · {merchant.contact_name}
                   </p>
                 </div>
 
@@ -285,12 +348,12 @@ function AccountsPage() {
                     £{availableCredit.toLocaleString()} available
                   </p>
                   <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                    of £{merchant.creditLimit.toLocaleString()} limit
+                    of £{merchant.credit_limit?.toLocaleString()} limit
                   </p>
                 </div>
 
                 {/* Warning icon for accounts that need attention */}
-                {merchant.status !== 'normal' && (
+                {merchant.account_status !== 'normal' && (
                   <FiAlertCircle
                     size={16}
                     style={{ color: statusStyle.color, marginLeft: '1rem', flexShrink: 0 }}

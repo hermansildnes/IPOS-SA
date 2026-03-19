@@ -27,6 +27,22 @@ from merchants.service import (
 
 router = APIRouter()
 
+@router.get("")
+def list_merchants(
+    account_status: str | None = None,  # ← Renamed parameter!
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,  # ← Now 'status' is the module again!
+            detail="Admin or manager access required"
+        )
+    
+    from merchants.service import get_all_merchants
+    return get_all_merchants(session, account_status)  # ← Pass renamed parameter
+
+
 
 @router.post("", response_model=MerchantRead)
 def create_merchant(
@@ -73,14 +89,27 @@ def get_merchant_balance(
 ):
     return calculate_merchant_balance_service(session, merchant_id)
 
-
+# Leon: Original endpoint returned wrong data leading to bugs when i ran server. 
 @router.get("/{merchant_id}/orders")
 def get_merchant_orders(
     merchant_id: UUID,
+    status: str | None = None,  
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    return get_merchant_orders_service(session, merchant_id)
+    # Import orders service
+    from orders.service import get_orders_by_merchant
+    from orders.models import OrderStatus
+    
+    # Convert string status to enum if provided
+    status_enum = None
+    if status:
+        try:
+            status_enum = OrderStatus(status)
+        except ValueError:
+            pass
+    
+    return get_orders_by_merchant(session, merchant_id, status_enum)
 
 
 @router.post("/{merchant_id}/invoices", response_model=InvoiceRead)

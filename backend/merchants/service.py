@@ -58,6 +58,16 @@ def get_merchant_by_id(session: Session, merchant_id: UUID) -> Merchant:
         )
     return merchant
 
+def get_all_merchants(session: Session, status: str | None = None):
+    """Get all merchants."""
+    from merchants.models import Merchant
+    from sqlmodel import select
+    
+    statement = select(Merchant)
+    if status:
+        statement = statement.where(Merchant.account_status == status)
+    
+    return list(session.exec(statement).all())
 
 def update_merchant(
     session: Session, merchant_id: UUID, merchant_in: MerchantUpdate

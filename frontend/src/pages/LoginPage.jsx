@@ -28,31 +28,16 @@ function LoginPage() {
   
 
   const handleLogin = async (e) => {
-    // Stop the browser from refreshing the page
-
     e.preventDefault();
-
-    // Show the loading spinner on the button
     setIsLoading(true);
 
-  
-
-    // TODO: Remove this when real backend is connected
-
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    // Try to match the entered credentials against our mock users list
-    // Returns true if credentials matched, false if they didn't
-    const success = login(username, password);
+    // Call login 
+    const success = await login(username, password);
 
     if (success) {
-      // Credentials matched - send the user to the dashboard
       navigate('/dashboard');
     }
-    // If login failed, the error message is handled automatically
-    // by AuthContext and will show in the red box above the form
 
-    // Hide the loading spinner regardless of success or failure
     setIsLoading(false);
   };
 
