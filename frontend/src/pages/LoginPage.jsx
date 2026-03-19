@@ -362,7 +362,7 @@ function LoginPage() {
                 { role: 'Admin', user: 'admin', pass: 'admin123', color: '#ef4444' },
                 { role: 'Director', user: 'director', pass: 'director123', color: '#f59e0b' },
                 { role: 'Manager', user: 'manager', pass: 'manager123', color: '#10b981' },
-                { role: 'Merchant', user: 'merchant', pass: 'merchant123', color: '#6366f1' },
+                { role: 'Merchant', user: 'merchant1', pass: 'merchant123', color: '#6366f1' },  // ← FIXED
               ].map((cred) => (
                 // Clicking a credential card auto fills the form above
                 // so testers don't have to type credentials manually

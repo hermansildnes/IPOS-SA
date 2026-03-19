@@ -68,12 +68,35 @@ def update_product(product_id: UUID, data, session: Session) -> Product:
     session.refresh(product)
     return product
 
-def search_products(product_id):
-    product = 
 
-def add_stock(product_id):
-    product = 
+
+  # Leon: This wasn't fully complete so just added this so i could test some things in the backend,
+  # but feel free to replace with your code if it was already done but not committed. 
+
+def search_products(query: str, session: Session) -> list[Product]:
+
+    return list(session.exec(select(Product)).all())
+
+
+def add_stock(product_id: UUID, quantity: int, user_id: UUID, session: Session):
+
+    # get product
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Product not found"
+        )
+    
+    # add the quantity
+    product.stock_quantity += quantity
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    
+    return product
+
 
 def get_low_stock_products(session: Session) -> list[Product]:
-    return list(session.exec(select(Product).where(Product.stock_quantity < Product.min_stock_level)))
-    
+    """Get products below minimum stock level"""
+    return list(session.exec(select(Product).where(Product.stock_quantity < Product.min_stock_level)).all())

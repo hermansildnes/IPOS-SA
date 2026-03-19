@@ -40,7 +40,7 @@ class ApiClient {
     
     // If we have a token, add it to the auth header
     if (token) {
-      headers['Authorisation'] = `Bearer ${token}`;
+      headers['Authorization'] = `Bearer ${token}`;
     }
     
     // Make the actual HTTP request
