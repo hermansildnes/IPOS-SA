@@ -66,7 +66,7 @@ function PlaceOrderPage() {
     
     // Format items for API
     const items = cart.map(item => ({
-      productId: item.product.id,
+      product_id: item.product.id,  // snake_case (matches backend)
       quantity: item.quantity,
     }));
     

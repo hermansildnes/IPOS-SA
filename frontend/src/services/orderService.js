@@ -9,20 +9,32 @@ function convertOrderFromBackend(order) {
   return {
     id: order.id,
     merchantId: order.merchant_id,
+    merchantName: order.merchant_name,  
     orderDate: order.order_date,
     status: order.status,
     total: parseFloat(order.total),
     discountAmount: parseFloat(order.discount_amount),
     amountDue: parseFloat(order.amount_due),
-    items: order.items || [],
+    dispatchedDate: order.dispatched_date, 
+    expectedDelivery: order.expected_delivery,  
+    courier: order.courier,  
+    courierRef: order.courier_ref, 
+    items: order.items?.map(item => ({
+      id: item.id,
+      productId: item.product_id,
+      productName: item.product_name,
+      quantity: item.quantity,
+      unitPrice: parseFloat(item.unit_price),
+      cost: parseFloat(item.cost),
+    })) || [],
     dispatchDetails: order.dispatch_details || null,
   };
 }
 
-// Helper to convert frontend camelCase to backend snake_case
+// Helper to convert frontend camelCase to backend snake case
 function convertOrderItemToBackend(item) {
   return {
-    product_id: item.productId || item.productID,
+    product_id: item.productId || item.productID || item.product_id,
     quantity: item.quantity,
   };
 }
@@ -34,29 +46,21 @@ function convertOrderItemToBackend(item) {
 */
 export async function placeOrder(items) {
   try {
-    // Validate items
-    if (!items || items.length === 0) {
-      return {
-        success: false,
-        error: 'Order must contain at least one item'
-      };
-    }
+    const response = await apiClient.post('/orders', { items });
     
-    // Convert to backend format
-    const backendItems = items.map(convertOrderItemToBackend);
-    
-    // Call backend API
-    const order = await apiClient.post('/orders', { items: backendItems });
-    
-    return {
-      success: true,
-      orderId: order.id,
-      order: convertOrderFromBackend(order)
+    return { 
+      success: true, 
+      orderId: response.order_id,
+      message: response.message,
+      total: response.total,
+      discount: response.discount,
+      amountDue: response.amount_due
     };
   } catch (error) {
-    return {
-      success: false,
-      error: error.message
+    console.error('Place order error:', error);  // Log for debugging
+    return { 
+      success: false, 
+      error: error.message || 'Failed to place order. Please try again.'
     };
   }
 }
@@ -71,7 +75,7 @@ export async function trackOrderProgress(orderID) {
     const order = await apiClient.get(`/orders/${orderID}`);
     const converted = convertOrderFromBackend(order);
     
-    // Return status as string per interface specification
+    // Return status as string per interface spec
     return converted.status;
   } catch (error) {
     console.error('Failed to track order:', error);
@@ -88,24 +92,28 @@ export async function getOrderDetails(orderID) {
     return convertOrderFromBackend(order);
   } catch (error) {
     console.error('Failed to get order details:', error);
-    return null;
+    throw error;  // Changed: throw instead of return null so component can handle error
   }
 }
 
 /**
  * Query merchant balance (ISAOrderAPI.queryBalance)
-
  * Endpoint: GET /api/merchants/{merchant_id}/balance
  * Auth: Required
  */
 export async function queryBalance(merchantID) {
   try {
     const balance = await apiClient.get(`/merchants/${merchantID}/balance`);
-    // Return available credit as integer per interface specification
-    return Math.floor(parseFloat(balance.available_credit));
+    
+    // Return full balance object with camelCase
+    return {
+      creditLimit: parseFloat(balance.credit_limit),
+      currentDebt: parseFloat(balance.current_debt),
+      availableCredit: parseFloat(balance.available_credit),
+    };
   } catch (error) {
     console.error('Failed to query balance:', error);
-    return 0;
+    throw error;  // Throw so caller can handle
   }
 }
 
@@ -116,15 +124,21 @@ export async function queryBalance(merchantID) {
  */
 export async function viewPreviousOrders(merchantID, status = null) {
   try {
-    const endpoint = status 
-      ? `/merchants/${merchantID}/orders?status=${status}`
-      : `/merchants/${merchantID}/orders`;
+    const params = status ? `?status=${status}` : '';
+    const orders = await apiClient.get(`/merchants/${merchantID}/orders${params}`);
     
-    const orders = await apiClient.get(endpoint);
-    return orders.map(convertOrderFromBackend);
+    // Convert backend snake case to frontend camelCase
+    return orders.map(order => ({
+      id: order.id,
+      status: order.status,
+      orderDate: order.order_date,
+      total: parseFloat(order.total),
+      discountAmount: parseFloat(order.discount_amount),
+      amountDue: parseFloat(order.amount_due),
+    }));
   } catch (error) {
-    console.error('Failed to view previous orders:', error);
-    return [];
+    console.error('Failed to get orders:', error);
+    throw error;  // Throw so caller can handle
   }
 }
 
@@ -146,6 +160,7 @@ export async function getCatalogue() {
       unitsPerPack: product.units_per_pack,
       packageCost: parseFloat(product.package_cost),
       stockQuantity: product.stock_quantity,
+      minStockLevel: product.min_stock_level,  
     }));
   } catch (error) {
     console.error('Failed to get catalogue:', error);
@@ -155,7 +170,6 @@ export async function getCatalogue() {
 
 /**
  * Update order status (admin/manager only)
-
  * Endpoint: PATCH /api/orders/{order_id}/status
  * Auth: Required (admin/manager only)
  */

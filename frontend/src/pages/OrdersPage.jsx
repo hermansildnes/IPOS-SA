@@ -11,6 +11,7 @@ import {
 import { viewPreviousOrders } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import { ORDER_STATUS, ORDER_STATUS_STYLES } from '../utils/constants';
+import { apiClient } from '../services/apiClient';  
 
 function OrdersPage() {
   const navigate = useNavigate();
@@ -19,25 +20,52 @@ function OrdersPage() {
   // State
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState(null); // null = all statuses
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [merchantId, setMerchantId] = useState(null);  // NEW
   
-  // Load orders on component mount
+  // Get merchant ID for merchant users
+  useEffect(() => {
+    async function loadMerchantId() {
+      if (user?.role === 'merchant') {
+        try {
+          const merchant = await apiClient.get('/merchants/me');
+          setMerchantId(merchant.id);
+        } catch (err) {
+          console.error('Failed to load merchant ID:', err);
+        }
+      } else if (user) {
+        // For non-merchants (admin/manager), we'd need different logic
+        // For now, just set loading to false
+        setLoading(false);
+      }
+    }
+    
+    if (user) {
+      loadMerchantId();
+    }
+  }, [user]);
+  
+  // Load orders when merchantId changes
   useEffect(() => {
     async function loadOrders() {
+      if (!merchantId) return;
+      
       setLoading(true);
-      
-      // For now, using user ID as merchant ID, later we'll retrieve actual merchant id from user
-      const merchantId = user?.id;
-      
-      if (merchantId) {
+      try {
         const data = await viewPreviousOrders(merchantId, statusFilter);
         setOrders(data);
+      } catch (err) {
+        console.error('Failed to load orders:', err);
+        setOrders([]);
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
     }
-    loadOrders();
-  }, [user, statusFilter]);
+    
+    if (merchantId) {
+      loadOrders();
+    }
+  }, [merchantId, statusFilter]);
   
   // Calculate status counts
   const statusCounts = {
@@ -47,6 +75,7 @@ function OrdersPage() {
     dispatched: orders.filter(o => o.status === ORDER_STATUS.DISPATCHED).length,
     delivered: orders.filter(o => o.status === ORDER_STATUS.DELIVERED).length,
   };
+
 
   return (
     <div style={{ padding: '1.5rem' }}>

@@ -9,7 +9,6 @@ import {
   FiMinus,
 } from 'react-icons/fi';
 import { getCatalogue } from '../services/orderService';
-import { searchProducts } from '../services/catalogueService';
 
 function CataloguePage() {
   const navigate = useNavigate();
@@ -25,6 +24,23 @@ function CataloguePage() {
     loadProducts();
   }, []);
   
+  // Load cart from localStorage on mount
+  useEffect(() => {
+    const savedCart = localStorage.getItem('cart');
+    if (savedCart) {
+      setCart(JSON.parse(savedCart));
+    }
+  }, []);
+  
+  // Save cart to localStorage whenever it changes
+  useEffect(() => {
+    if (cart.length > 0) {
+      localStorage.setItem('cart', JSON.stringify(cart));
+    } else {
+      localStorage.removeItem('cart');
+    }
+  }, [cart]);
+  
   // Load products function
   async function loadProducts() {
     setLoading(true);
@@ -33,20 +49,17 @@ function CataloguePage() {
     setLoading(false);
   }
   
-  // Search products
-  async function handleSearch(query) {
-    setSearchQuery(query);
-    setLoading(true);
+  // Filter products based on search query
+  const filteredProducts = products.filter(product => {
+    if (!searchQuery.trim()) return true;
     
-    if (query.trim() === '') {
-      await loadProducts();
-    } else {
-      const results = await searchProducts(query);
-      setProducts(results);
-    }
-    
-    setLoading(false);
-  }
+    const query = searchQuery.toLowerCase();
+    return (
+      product.name.toLowerCase().includes(query) ||
+      product.productCode.toLowerCase().includes(query) ||
+      product.description?.toLowerCase().includes(query)
+    );
+  });
   
   // Add to cart
   const addToCart = (product) => {
@@ -173,7 +186,7 @@ function CataloguePage() {
             type="text"
             placeholder="Search products by name, code, or description..."
             value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value)}
             style={{
               width: '100%',
               padding: '0.75rem 1rem 0.75rem 3rem',
@@ -181,6 +194,7 @@ function CataloguePage() {
               borderRadius: '0.5rem',
               fontSize: '0.875rem',
               outline: 'none',
+              boxSizing: 'border-box',
             }}
           />
         </div>
@@ -213,7 +227,7 @@ function CataloguePage() {
         </div>
       )}
       
-      {/* Empty State */}
+      {/* Empty State - No Products at All */}
       {!loading && products.length === 0 && (
         <div style={{
           background: 'white',
@@ -224,43 +238,56 @@ function CataloguePage() {
         }}>
           <FiPackage size={48} style={{ color: '#cbd5e1', margin: '0 auto 1rem' }} />
           <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#0f172a', marginBottom: '0.5rem' }}>
-            {searchQuery ? 'No products found' : 'No products available'}
+            No products available
           </h3>
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            {searchQuery
-              ? `No products match "${searchQuery}". Try a different search term.`
-              : 'The catalogue is currently empty. Please check back later.'
-            }
+            The catalogue is currently empty. Products will appear here once added.
           </p>
-          {searchQuery && (
-            <button
-              onClick={() => handleSearch('')}
-              style={{
-                marginTop: '1.5rem',
-                background: '#6366f1',
-                color: 'white',
-                border: 'none',
-                borderRadius: '0.5rem',
-                padding: '0.75rem 1.5rem',
-                fontSize: '0.875rem',
-                fontWeight: '600',
-                cursor: 'pointer',
-              }}
-            >
-              Clear Search
-            </button>
-          )}
+        </div>
+      )}
+      
+      {/* Empty State - No Search Results */}
+      {!loading && products.length > 0 && filteredProducts.length === 0 && (
+        <div style={{
+          background: 'white',
+          border: '1px solid #e2e8f0',
+          borderRadius: '0.75rem',
+          padding: '3rem',
+          textAlign: 'center',
+        }}>
+          <FiSearch size={48} style={{ color: '#cbd5e1', margin: '0 auto 1rem' }} />
+          <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#0f172a', marginBottom: '0.5rem' }}>
+            No products found
+          </h3>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+            No products match "{searchQuery}". Try a different search term.
+          </p>
+          <button
+            onClick={() => setSearchQuery('')}
+            style={{
+              background: '#6366f1',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              padding: '0.75rem 1.5rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+            }}
+          >
+            Clear Search
+          </button>
         </div>
       )}
       
       {/* Products Grid */}
-      {!loading && products.length > 0 && (
+      {!loading && filteredProducts.length > 0 && (
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
           gap: '1.5rem',
         }}>
-          {products.map(product => (
+          {filteredProducts.map(product => (
             <ProductCard
               key={product.id}
               product={product}
@@ -273,14 +300,14 @@ function CataloguePage() {
       )}
       
       {/* Results Count */}
-      {!loading && products.length > 0 && (
+      {!loading && filteredProducts.length > 0 && (
         <p style={{
           color: '#64748b',
           fontSize: '0.875rem',
           marginTop: '2rem',
           textAlign: 'center',
         }}>
-          Showing {products.length} product{products.length !== 1 ? 's' : ''}
+          Showing {filteredProducts.length} of {products.length} product{products.length !== 1 ? 's' : ''}
           {searchQuery && ` matching "${searchQuery}"`}
         </p>
       )}

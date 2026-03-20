@@ -10,6 +10,7 @@ import AccountDetailPage from './pages/AccountDetailPage';
 import CreateAccountPage from './pages/CreateAccountPage';
 import ReportsPage from './pages/ReportsPage';
 import PlaceOrderPage from './pages/PlaceOrderPage';
+import OrderDetailPage from './pages/OrderDetailPage';
 
 // Guards any route that requires the user to be logged in
 // If not logged in, redirects back to the login page
@@ -60,6 +61,7 @@ function App() {
         <Route path="/orders" element={
           <ProtectedRoute><OrdersPage /></ProtectedRoute>
         } />
+        <Route path="/orders/:orderId" element={<OrderDetailPage />} />
         {/* Catch any unknown URLs and send to login */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

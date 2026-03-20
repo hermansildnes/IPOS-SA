@@ -9,7 +9,7 @@ each endpoint is a thin wrapper that:
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from auth.models import User, UserRole
 from auth.service import get_current_user
@@ -29,17 +29,6 @@ def create_order(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """
-    Create a new order for the logged in merchant.
-    Goes through these steps:
-    1. Validates merchant account is in good standing
-    2. Checks products exist and have sufficient stock
-    3. Calculates total and applies merchant discount
-    4. Verifies order doesn't exceed credit limit
-    5. Creates order and invoice
-    6. Reduces stock quantities
-    """
-    # next to do - link current user to actual merchant
 
     # only merchants can place orders
     if current_user.role != UserRole.MERCHANT:
@@ -48,8 +37,20 @@ def create_order(
             detail="Only merchants can place orders",
         )
 
-    # extract merchant_id from current user
-    merchant_id = current_user.id
+    # Leon: Get the actual merchant ID from the user's linked merchant account
+    # Experienced some issues here
+    from merchants.models import Merchant
+    merchant = session.exec(
+        select(Merchant).where(Merchant.user_id == current_user.id)
+    ).first()
+    
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Merchant account not found for this user"
+        )
+    
+    merchant_id = merchant.id  
 
     try:
         # convert request items to service format
@@ -71,6 +72,7 @@ def create_order(
     except ValueError as e:
         # validation error from service (e.g. insufficient stock, over credit limit)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
 
 
 @router.get("/{order_id}")
