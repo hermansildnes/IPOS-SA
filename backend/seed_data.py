@@ -49,6 +49,9 @@ def clear_db(session: Session):
     session.query(Product).delete()
     session.query(Merchant).delete()
     session.query(User).delete()
+
+    from commercial_applications.models import CommercialApplication
+    session.query(CommercialApplication).delete()
     
     session.commit()
     print("Done\n")
