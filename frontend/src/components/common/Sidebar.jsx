@@ -49,6 +49,13 @@ const NAV_ITEMS = [
     // Only management roles can view reports
     roles: ['admin', 'director', 'manager'],
   },
+  {
+  label: 'Applications',
+  icon: FiPackage,
+  path: '/applications',
+  // Only admin can manage applications
+  roles: ['admin'],
+},
 ];
 
 // colour badge shown next to the user's name to identify their role quickly

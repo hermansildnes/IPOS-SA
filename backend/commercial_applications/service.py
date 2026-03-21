@@ -98,7 +98,7 @@ def _notify_applicant(application: CommercialApplication) -> None:
     if not settings.IPU_EMAIL_API_URL or not settings.IPU_EMAIL_API_KEY:
         logger.warning(
             "IPU email service not configured — skipping approval notification for %s",
-            application.company_reg_no,
+            application.reg_number,
         )
         return
 
