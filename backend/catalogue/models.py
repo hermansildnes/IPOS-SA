@@ -60,4 +60,4 @@ class ProductUpdate(BaseModel):
 
 
 class AddStockRequest(BaseModel):
-    quantity: int
+    quantity: int = Field(gt=0)
