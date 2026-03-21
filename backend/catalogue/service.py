@@ -1,13 +1,14 @@
 from fastapi import HTTPException, status
-from sqlmodel import Session, select
+from sqlmodel import Session, select, or_
 from uuid import UUID
 from datetime import datetime, timezone
 
-from catalogue.models import Product, StockReceipt
+from catalogue.models import Product, ProductCreate, ProductUpdate, StockReceipt
 
 
 def list_catalogue(session: Session) -> list[Product]:
     return list(session.exec(select(Product)).all())
+
 
 def get_product(product_id: UUID, session: Session) -> Product:
     product = session.get(Product, product_id)
@@ -17,8 +18,8 @@ def get_product(product_id: UUID, session: Session) -> Product:
         )
     return product
 
-def create_product(data, session: Session) -> Product:
 
+def create_product(data: ProductCreate, session: Session) -> Product:
     product = Product(
         product_code=data.product_code,
         name=data.name,
@@ -27,31 +28,16 @@ def create_product(data, session: Session) -> Product:
         unit=data.unit,
         units_per_pack=data.units_per_pack,
         package_cost=data.package_cost,
+        min_stock_level=data.min_stock_level,
+        restock_percentage=data.restock_percentage,
     )
-
     session.add(product)
     session.commit()
     session.refresh(product)
     return product
 
-def update_product(data, session: Session) -> Product:
-    
-    product = Product(
-        product_code=data.product_code,
-        name=data.name,
-        description=data.description,
-        package_type=data.package_type,
-        unit=data.unit,
-        units_per_pack=data.units_per_pack,
-        package_cost=data.package_cost,
-    )
 
-    session.add(product)
-    session.commit()
-    session.refresh(product)
-    return product
-
-def update_product(product_id: UUID, data, session: Session) -> Product:
+def update_product(product_id: UUID, data: ProductUpdate, session: Session) -> Product:
     product = get_product(product_id, session)
 
     product.product_code = data.product_code
@@ -69,34 +55,48 @@ def update_product(product_id: UUID, data, session: Session) -> Product:
     return product
 
 
+def delete_product(product_id: UUID, session: Session) -> None:
+    product = get_product(product_id, session)
+    session.delete(product)
+    session.commit()
 
-  # Leon: This wasn't fully complete so just added this so i could test some things in the backend,
-  # but feel free to replace with your code if it was already done but not committed. 
 
 def search_products(query: str, session: Session) -> list[Product]:
-
-    return list(session.exec(select(Product)).all())
-
-
-def add_stock(product_id: UUID, quantity: int, user_id: UUID, session: Session):
-
-    # get product
-    product = session.get(Product, product_id)
-    if not product:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found"
+    term = f"%{query}%"
+    results = session.exec(
+        select(Product).where(
+            or_(
+                Product.product_code.ilike(term),
+                Product.name.ilike(term),
+                Product.description.ilike(term),
+            )
         )
-    
-    # add the quantity
+    ).all()
+    return list(results)
+
+
+def add_stock(product_id: UUID, quantity: int, user_id: UUID, session: Session) -> Product:
+    product = get_product(product_id, session)
+
     product.stock_quantity += quantity
+    product.updated_at = datetime.now(timezone.utc)
     session.add(product)
+
+    receipt = StockReceipt(
+        product_id=product_id,
+        quantity_added=quantity,
+        received_by=user_id,
+    )
+    session.add(receipt)
+
     session.commit()
     session.refresh(product)
-    
     return product
 
 
 def get_low_stock_products(session: Session) -> list[Product]:
-    """Get products below minimum stock level"""
-    return list(session.exec(select(Product).where(Product.stock_quantity < Product.min_stock_level)).all())
+    return list(
+        session.exec(
+            select(Product).where(Product.stock_quantity < Product.min_stock_level)
+        ).all()
+    )
