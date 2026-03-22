@@ -132,11 +132,50 @@ def create_order(
     return order
 
 
-def get_order(session: Session, order_id: UUID) -> Order | None:
-
-    #  Retrieve a single order by its ID.
-    return session.get(Order, order_id)
-
+def get_order(session: Session, order_id: UUID) -> dict | None:
+    """
+    Retrieve a single order by its ID with all details including items
+    """
+    from merchants.models import Merchant
+    
+    # Get the order
+    order = session.get(Order, order_id)
+    if not order:
+        return None
+    
+    # Get merchant name
+    merchant = session.get(Merchant, order.merchant_id)
+    
+    # Get order items with product details
+    items = session.exec(select(OrderItem).where(OrderItem.order_id == order_id)).all()
+    
+    items_data = []
+    for item in items:
+        product = session.get(Product, item.product_id)
+        items_data.append({
+            "id": str(item.id),
+            "product_id": str(item.product_id),
+            "product_name": product.name if product else "Unknown",
+            "quantity": item.quantity,
+            "unit_price": float(item.unit_price),
+            "cost": float(item.cost),
+        })
+    
+    return {
+        "id": str(order.id),
+        "merchant_id": str(order.merchant_id),
+        "merchant_name": merchant.company_name if merchant else "Unknown",
+        "order_date": order.order_date.isoformat(),
+        "status": order.status.value,
+        "total": float(order.total),
+        "discount_amount": float(order.discount_amount),
+        "amount_due": float(order.amount_due),
+        "dispatched_date": order.dispatched_date.isoformat() if order.dispatched_date else None,
+        "expected_delivery": order.expected_delivery.isoformat() if order.expected_delivery else None,
+        "courier": order.courier,
+        "courier_ref": order.courier_ref,
+        "items": items_data,
+    }
 
 def get_orders_by_merchant(
     session: Session, merchant_id: UUID, status: OrderStatus | None = None
@@ -166,20 +205,7 @@ def update_order_status(
     courier_ref: str | None = None,
     expected_delivery: date | None = None,
 ) -> Order:
-    """
-    Update an order's status and optionally add dispatch details.
-    Valid status transitions:
-    - ACCEPTED → PROCESSING
-    - PROCESSING → DISPATCHED (requires dispatch details)
-    - DISPATCHED → DELIVERED
 
-    When transitioning to DISPATCHED, all dispatch fields are required:
-    - dispatched_by
-    - courier
-    - courier_ref
-    - expected_delivery
-
-    """
 
     # get the order
     order = session.get(Order, order_id)

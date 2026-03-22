@@ -74,22 +74,41 @@ def create_order(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
-
 @router.get("/{order_id}")
-def get_order(
+def get_order_by_id(
     order_id: UUID,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-
+    """Get order details by ID."""
+    from merchants.models import Merchant
+    from sqlmodel import select
+    
+    # Get the order details
     order = service.get_order(session, order_id)
-
+    
     if not order:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
         )
-
+    
+    # Check permissions - merchants can only see their own orders
+    if current_user.role == UserRole.MERCHANT:
+        # Get merchant ID for this user
+        merchant = session.exec(
+            select(Merchant).where(Merchant.user_id == current_user.id)
+        ).first()
+        
+        if not merchant or order["merchant_id"] != str(merchant.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view your own orders"
+            )
+    
     return order
+
+
 
 
 @router.patch("/{order_id}/status")
