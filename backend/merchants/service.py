@@ -19,13 +19,19 @@ from orders.models import Order, Invoice
 
 
 def create_merchant(session: Session, merchant_in: MerchantCreate) -> Merchant:
-    existing_account = session.exec(
-        select(Merchant).where(Merchant.account_number == merchant_in.account_number)
+    from auth.models import User, UserRole
+    from auth.service import hash_password
+
+    existing_user = session.exec(
+        select(User).where(
+            (User.username == merchant_in.username) | (User.email == merchant_in.email)
+        )
     ).first()
-    if existing_account:
+
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Account number already exists",
+            detail="Username or email already exists",
         )
 
     if merchant_in.credit_limit < 0:
@@ -43,7 +49,41 @@ def create_merchant(session: Session, merchant_in: MerchantCreate) -> Merchant:
     else:
         merchant_in.fixed_discount_rate = None
 
-    merchant = Merchant(**merchant_in.model_dump())
+    # Create linked merchant user first
+    user = User(
+        username=merchant_in.username,
+        email=merchant_in.email,
+        password_hash=hash_password(merchant_in.password),
+        role=UserRole.MERCHANT,
+        is_active=True,
+    )
+    session.add(user)
+    session.flush()
+
+    # Auto-generate next account number like M004, M005, etc.
+    existing_merchants = session.exec(select(Merchant)).all()
+    next_number = len(existing_merchants) + 1
+    account_number = f"M{next_number:03d}"
+
+    while session.exec(
+        select(Merchant).where(Merchant.account_number == account_number)
+    ).first():
+        next_number += 1
+        account_number = f"M{next_number:03d}"
+
+    merchant = Merchant(
+        user_id=user.id,
+        account_number=account_number,
+        company_name=merchant_in.company_name,
+        contact_name=merchant_in.contact_name,
+        contact_email=merchant_in.contact_email,
+        contact_phone=merchant_in.contact_phone,
+        address=merchant_in.address,
+        credit_limit=merchant_in.credit_limit,
+        discount_plan_type=merchant_in.discount_plan_type,
+        fixed_discount_rate=merchant_in.fixed_discount_rate,
+    )
+
     session.add(merchant)
     session.commit()
     session.refresh(merchant)

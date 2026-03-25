@@ -77,8 +77,9 @@ class Payment(SQLModel, table=True):
 
 
 class MerchantCreate(BaseModel):
-    user_id: UUID
-    account_number: str
+    username: str
+    password: str
+    email: EmailStr
     company_name: str
     contact_name: str
     contact_email: EmailStr
