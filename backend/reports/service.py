@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from catalogue.models import Product, StockReceipt
 from merchants.models import Merchant, Payment
-from orders.models import Order, OrderItem, Invoice, OrderStatus
+from orders.models import Order, OrderItem, OrderStatus
 
 from reports.models import (
     TurnoverItem,
@@ -101,11 +101,13 @@ def get_merchant_orders_summary(
         raise ValueError("Merchant not found")
 
     orders = session.exec(
-        select(Order).where(
+        select(Order)
+        .where(
             Order.merchant_id == merchant_id,
             Order.order_date >= start_date,
             Order.order_date <= end_date,
-        ).order_by(Order.order_date)
+        )
+        .order_by(Order.order_date)
     ).all()
 
     rows = []
@@ -179,11 +181,13 @@ def get_merchant_orders_detailed(
         raise ValueError("Merchant not found")
 
     orders = session.exec(
-        select(Order).where(
+        select(Order)
+        .where(
             Order.merchant_id == merchant_id,
             Order.order_date >= start_date,
             Order.order_date <= end_date,
-        ).order_by(Order.order_date)
+        )
+        .order_by(Order.order_date)
     ).all()
 
     detailed_orders = []
@@ -299,8 +303,10 @@ def get_stock_turnover_report(
         receipts = session.exec(
             select(StockReceipt).where(
                 StockReceipt.product_id == p.id,
-                StockReceipt.received_at >= datetime.combine(start_date, datetime.min.time()),
-                StockReceipt.received_at <= datetime.combine(end_date, datetime.max.time()),
+                StockReceipt.received_at
+                >= datetime.combine(start_date, datetime.min.time()),
+                StockReceipt.received_at
+                <= datetime.combine(end_date, datetime.max.time()),
             )
         ).all()
         qty_received = sum(r.quantity_added for r in receipts)

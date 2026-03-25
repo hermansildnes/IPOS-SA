@@ -2,7 +2,6 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
 from catalogue.models import Product
@@ -17,9 +16,7 @@ def _serialise_order(session: Session, order: Order):
     merchant = session.get(Merchant, order.merchant_id)
 
     # load all order items belonging to this order
-    items = session.exec(
-        select(OrderItem).where(OrderItem.order_id == order.id)
-    ).all()
+    items = session.exec(select(OrderItem).where(OrderItem.order_id == order.id)).all()
 
     # collect product ids first so we can fetch product names in one go
     product_ids = [item.product_id for item in items]
@@ -40,12 +37,18 @@ def _serialise_order(session: Session, order: Order):
         "merchant_name": merchant.company_name if merchant else None,
         "order_date": order.order_date.isoformat(),
         # enum safety: use .value when available, otherwise just cast to string
-        "status": order.status.value if hasattr(order.status, "value") else str(order.status),
+        "status": order.status.value
+        if hasattr(order.status, "value")
+        else str(order.status),
         "total": float(order.total),
         "discount_amount": float(order.discount_amount),
         "amount_due": float(order.amount_due),
-        "dispatched_date": order.dispatched_date.isoformat() if order.dispatched_date else None,
-        "expected_delivery": order.expected_delivery.isoformat() if order.expected_delivery else None,
+        "dispatched_date": order.dispatched_date.isoformat()
+        if order.dispatched_date
+        else None,
+        "expected_delivery": order.expected_delivery.isoformat()
+        if order.expected_delivery
+        else None,
         "courier": order.courier,
         "courier_ref": order.courier_ref,
         "items": [
@@ -53,7 +56,9 @@ def _serialise_order(session: Session, order: Order):
                 "id": str(item.id),
                 "product_id": str(item.product_id),
                 # include product name if the product still exists
-                "product_name": product_map.get(item.product_id).name if product_map.get(item.product_id) else None,
+                "product_name": product_map.get(item.product_id).name
+                if product_map.get(item.product_id)
+                else None,
                 "quantity": item.quantity,
                 "unit_price": float(item.unit_price),
                 "cost": float(item.cost),
@@ -65,7 +70,9 @@ def _serialise_order(session: Session, order: Order):
 
 # helper to work out the discount for this merchant on this subtotal
 # handles both fixed discount plans and flexible tiered plans
-def _calculate_discount(session: Session, merchant: Merchant, subtotal: Decimal) -> Decimal:
+def _calculate_discount(
+    session: Session, merchant: Merchant, subtotal: Decimal
+) -> Decimal:
     # fixed plan = same rate every time
     if merchant.discount_plan_type == DiscountPlanType.FIXED:
         if merchant.fixed_discount_rate is None:
@@ -129,12 +136,14 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
         subtotal += cost
 
         # store validated item data so we can create rows after the order exists
-        order_items_to_create.append({
-            "product": product,
-            "quantity": quantity,
-            "unit_price": product.package_cost,
-            "cost": cost,
-        })
+        order_items_to_create.append(
+            {
+                "product": product,
+                "quantity": quantity,
+                "unit_price": product.package_cost,
+                "cost": cost,
+            }
+        )
 
     # work out merchant-specific discount and final amount due
     discount_amount = _calculate_discount(session, merchant, subtotal)
@@ -215,7 +224,9 @@ def get_all_orders(session: Session, status_filter: OrderStatus | None = None):
 
 # get all orders for one merchant only
 # merchant views and some reports/history views use this
-def get_orders_by_merchant(session: Session, merchant_id: UUID, status_filter: OrderStatus | None = None):
+def get_orders_by_merchant(
+    session: Session, merchant_id: UUID, status_filter: OrderStatus | None = None
+):
     statement = (
         select(Order)
         .where(Order.merchant_id == merchant_id)
@@ -256,12 +267,16 @@ def update_order_status(
     }
 
     if new_status not in valid_transitions[current_status]:
-        raise ValueError(f"Cannot change order from {current_status.value} to {new_status.value}")
+        raise ValueError(
+            f"Cannot change order from {current_status.value} to {new_status.value}"
+        )
 
     # dispatching needs extra delivery information
     if new_status == OrderStatus.DISPATCHED:
         if not courier or not courier_ref or not expected_delivery:
-            raise ValueError("Courier, tracking reference, and expected delivery are required for dispatch")
+            raise ValueError(
+                "Courier, tracking reference, and expected delivery are required for dispatch"
+            )
 
         order.dispatched_by = dispatched_by
         order.dispatched_date = date.today()

@@ -66,7 +66,9 @@ def get_merchant_orders_summary(
             detail="start_date must be before or equal to end_date",
         )
     try:
-        return service.get_merchant_orders_summary(session, merchant_id, start_date, end_date)
+        return service.get_merchant_orders_summary(
+            session, merchant_id, start_date, end_date
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
@@ -89,7 +91,9 @@ def get_merchant_orders_detailed(
             detail="start_date must be before or equal to end_date",
         )
     try:
-        return service.get_merchant_orders_detailed(session, merchant_id, start_date, end_date)
+        return service.get_merchant_orders_detailed(
+            session, merchant_id, start_date, end_date
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 

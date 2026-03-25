@@ -75,7 +75,9 @@ def search_products(query: str, session: Session) -> list[Product]:
     return list(results)
 
 
-def add_stock(product_id: UUID, quantity: int, user_id: UUID, session: Session) -> Product:
+def add_stock(
+    product_id: UUID, quantity: int, user_id: UUID, session: Session
+) -> Product:
     product = get_product(product_id, session)
 
     product.stock_quantity += quantity
