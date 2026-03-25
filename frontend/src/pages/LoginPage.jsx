@@ -84,40 +84,46 @@ function LoginPage() {
 
         {/* Logo and title section at the top of the card */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          {/* White circle container for the logo */}
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '80px',
-            height: '80px',
-            background: 'white',
-            borderRadius: '50%',
-            marginBottom: '1rem',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-            overflow: 'hidden'
-          }}>
-            {/* Team logo loaded from src/assets/logo.png */}
+          <div
+            style={{
+              width: '110px',
+              height: '110px',
+              margin: '0 auto 1rem auto',
+              borderRadius: '20px',
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
             <img
               src={logo}
               alt="Company Logo"
-              style={{ width: '60px', height: '60px', objectFit: 'contain' }}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: 'block'
+              }}
             />
           </div>
 
-          {/* App name and description */}
-          <h1 style={{
-            fontSize: '2rem',
-            fontWeight: '700',
-            color: 'white',
-            marginBottom: '0.25rem',
-            letterSpacing: '-0.025em'
-          }}>
+          <h1
+            style={{
+              fontSize: '2rem',
+              fontWeight: '700',
+              color: 'white',
+              marginBottom: '0.25rem',
+              letterSpacing: '-0.025em'
+            }}
+          >
             IPOS-SA
           </h1>
+
           <p style={{ color: '#a5b4fc', fontSize: '0.875rem' }}>
             InfoPharma Ordering System
           </p>
+
           <p style={{ color: '#818cf8', fontSize: '0.75rem', marginTop: '0.25rem' }}>
             Server Application · Team A
           </p>
@@ -336,7 +342,7 @@ function LoginPage() {
               marginBottom: '0.75rem',
               letterSpacing: '0.05em'
             }}>
-              TEST CREDENTIALS (remove before final demo)
+              TEST CREDENTIALS
             </p>
             <div style={{
               display: 'grid',

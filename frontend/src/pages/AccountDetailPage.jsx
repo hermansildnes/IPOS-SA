@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getMerchantById, updateMerchant, reinstateAccount } from '../services/merchantService';
+import {
+  getMerchantById,
+  getCurrentMerchant,
+  updateMerchant,
+  reinstateAccount,
+} from '../services/merchantService';
 import { STATUS_STYLES, ROLES, ACCOUNT_STATUS, DISCOUNT_TYPES } from '../utils/constants';
 import {
   FiArrowLeft,
@@ -19,10 +24,19 @@ import {
 } from 'react-icons/fi';
 
 function AccountDetailPage() {
-  // useParams grabs the merchant ID from the URL e.g. /accounts/2
+  // useParams grabs the merchant ID from the URL e.g. /accounts/:id
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  // merchants use this same page too, but through /my-account with no id param
+  const isMerchantSelfView = user?.role === ROLES.MERCHANT && !id;
+
+  // loading is true while we fetch the merchant data from the backend
+  const [loading, setLoading] = useState(true);
+
+  // merchant = the currently loaded merchant account object
+  const [merchant, setMerchant] = useState(null);
 
   // Track whether we're in edit mode or view mode
   const [isEditing, setIsEditing] = useState(false);
@@ -37,30 +51,92 @@ function AccountDetailPage() {
   // Any error or success messages to show the user
   const [message, setMessage] = useState(null);
 
-  // Get the merchant data from our service layer
-  const [merchant, setMerchant] = useState(getMerchantById(Number(id)));
-
   // formData holds the values being edited
-  // Initialised with the merchant's current values
+  // Initialised after the merchant data has been loaded
   const [formData, setFormData] = useState({
-    companyName: merchant?.companyName || '',
-    contactName: merchant?.contactName || '',
-    email: merchant?.email || '',
-    phone: merchant?.phone || '',
-    address: merchant?.address || '',
-    creditLimit: merchant?.creditLimit || 0,
-    discountType: merchant?.discountType || DISCOUNT_TYPES.FIXED,
-    discountRate: merchant?.discountRate || 0,
+    companyName: '',
+    contactName: '',
+    contactEmail: '',
+    contactPhone: '',
+    address: '',
+    creditLimit: 0,
+    discountPlanType: DISCOUNT_TYPES.FIXED,
+    fixedDiscountRate: 0,
   });
 
-  // If no merchant found with this ID, show a not found message
+  // Load the merchant when the page opens
+  // If this is /my-account, fetch the current logged in merchant
+  // otherwise fetch the merchant using the id from the URL
+  useEffect(() => {
+    async function loadMerchant() {
+      try {
+        setLoading(true);
+
+        const loadedMerchant = isMerchantSelfView
+          ? await getCurrentMerchant()
+          : await getMerchantById(id);
+
+        setMerchant(loadedMerchant);
+
+        // once loaded, sync the edit form to the merchant's current values
+        if (loadedMerchant) {
+          setFormData({
+            companyName: loadedMerchant.companyName || '',
+            contactName: loadedMerchant.contactName || '',
+            contactEmail: loadedMerchant.contactEmail || '',
+            contactPhone: loadedMerchant.contactPhone || '',
+            address: loadedMerchant.address || '',
+            creditLimit: loadedMerchant.creditLimit || 0,
+            discountPlanType: loadedMerchant.discountPlanType || DISCOUNT_TYPES.FIXED,
+            fixedDiscountRate: loadedMerchant.fixedDiscountRate || 0,
+          });
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadMerchant();
+  }, [id, isMerchantSelfView]);
+
+  // Show a loading state while we fetch the merchant account
+  if (loading) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '400px',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid #e2e8f0',
+            borderTop: '4px solid #6366f1',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto 1rem',
+          }} />
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Loading account...</p>
+        </div>
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // If no merchant found, show a not found message
   if (!merchant) {
     return (
       <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
         <FiAlertCircle size={32} style={{ marginBottom: '1rem' }} />
         <p style={{ fontWeight: '500' }}>Merchant not found</p>
         <button
-          onClick={() => navigate('/accounts')}
+          onClick={() => navigate(user?.role === ROLES.MERCHANT ? '/dashboard' : '/accounts')}
           style={{
             marginTop: '1rem',
             background: 'none',
@@ -70,23 +146,49 @@ function AccountDetailPage() {
             fontSize: '0.875rem',
           }}
         >
-          ← Back to accounts
+          ← Back
         </button>
       </div>
     );
   }
 
-  const statusStyle = STATUS_STYLES[merchant.status];
-  const availableCredit = merchant.creditLimit - merchant.currentDebt;
+  const statusStyle = STATUS_STYLES[merchant.status] || STATUS_STYLES.normal;
+  const availableCredit = (merchant.creditLimit || 0) - (merchant.currentDebt || 0);
+
+  // Checks if the current user can edit this merchant's details
+  const canEdit = user?.role === ROLES.ADMIN || user?.role === ROLES.MANAGER;
+
+  // Only the director can reinstate defaulted accounts (SA-DIR-01)
+  const canReinstate =
+    user?.role === ROLES.DIRECTOR &&
+    merchant.status === ACCOUNT_STATUS.IN_DEFAULT;
+
+  // merchants go back to dashboard, management roles go back to accounts list
+  const backPath = user?.role === ROLES.MERCHANT ? '/dashboard' : '/accounts';
 
   // Saves the edited form data back to the service layer
-  const handleSave = () => {
-    const result = updateMerchant(Number(id), formData);
+  const handleSave = async () => {
+    const result = await updateMerchant(merchant.id, formData);
+
     if (result.success) {
       // Update local state so the page reflects the changes immediately
       setMerchant(result.merchant);
+
+      // re-sync the form in case the backend normalised anything
+      setFormData({
+        companyName: result.merchant.companyName || '',
+        contactName: result.merchant.contactName || '',
+        contactEmail: result.merchant.contactEmail || '',
+        contactPhone: result.merchant.contactPhone || '',
+        address: result.merchant.address || '',
+        creditLimit: result.merchant.creditLimit || 0,
+        discountPlanType: result.merchant.discountPlanType || DISCOUNT_TYPES.FIXED,
+        fixedDiscountRate: result.merchant.fixedDiscountRate || 0,
+      });
+
       setIsEditing(false);
       setMessage({ type: 'success', text: 'Account updated successfully' });
+
       // Clear the success message after 3 seconds
       setTimeout(() => setMessage(null), 3000);
     } else {
@@ -97,28 +199,35 @@ function AccountDetailPage() {
   // Cancels editing and resets the form back to original values
   const handleCancel = () => {
     setFormData({
-      companyName: merchant.companyName,
-      contactName: merchant.contactName,
-      email: merchant.email,
-      phone: merchant.phone,
-      address: merchant.address,
-      creditLimit: merchant.creditLimit,
-      discountType: merchant.discountType,
-      discountRate: merchant.discountRate,
+      companyName: merchant.companyName || '',
+      contactName: merchant.contactName || '',
+      contactEmail: merchant.contactEmail || '',
+      contactPhone: merchant.contactPhone || '',
+      address: merchant.address || '',
+      creditLimit: merchant.creditLimit || 0,
+      discountPlanType: merchant.discountPlanType || DISCOUNT_TYPES.FIXED,
+      fixedDiscountRate: merchant.fixedDiscountRate || 0,
     });
     setIsEditing(false);
   };
 
   // Handles the director reinstating a defaulted account (SA-DIR-01)
-  const handleReinstate = () => {
-    const result = reinstateAccount(
-      Number(id),
+  const handleReinstate = async () => {
+    const result = await reinstateAccount(
+      merchant.id,
       reinstateReason,
       user?.id
     );
 
     if (result.success) {
-      setMerchant(result.merchant);
+      // use returned merchant if available, otherwise refresh from backend
+      if (result.merchant) {
+        setMerchant(result.merchant);
+      } else {
+        const refreshedMerchant = await getMerchantById(merchant.id);
+        setMerchant(refreshedMerchant);
+      }
+
       setShowReinstateModal(false);
       setReinstateReason('');
       setMessage({ type: 'success', text: 'Account successfully reinstated' });
@@ -128,20 +237,13 @@ function AccountDetailPage() {
     }
   };
 
-  // Checks if the current user can edit this merchant's details
-  const canEdit = user?.role === ROLES.ADMIN || user?.role === ROLES.MANAGER;
-
-  // Only the director can reinstate defaulted accounts (SA-DIR-01)
-  const canReinstate = user?.role === ROLES.DIRECTOR &&
-    merchant.status === ACCOUNT_STATUS.IN_DEFAULT;
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '900px' }}>
 
       {/* Back button and page header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <button
-          onClick={() => navigate('/accounts')}
+          onClick={() => navigate(backPath)}
           style={{
             background: 'white',
             border: '1px solid #e2e8f0',
@@ -155,6 +257,7 @@ function AccountDetailPage() {
         >
           <FiArrowLeft size={16} style={{ color: '#64748b' }} />
         </button>
+
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <h1 style={{
@@ -339,16 +442,16 @@ function AccountDetailPage() {
             <DetailField
               icon={FiMail}
               label="Email"
-              value={formData.email}
+              value={formData.contactEmail}
               isEditing={isEditing}
-              onChange={(v) => setFormData({ ...formData, email: v })}
+              onChange={(v) => setFormData({ ...formData, contactEmail: v })}
             />
             <DetailField
               icon={FiPhone}
               label="Phone"
-              value={formData.phone}
+              value={formData.contactPhone}
               isEditing={isEditing}
-              onChange={(v) => setFormData({ ...formData, phone: v })}
+              onChange={(v) => setFormData({ ...formData, contactPhone: v })}
             />
             <DetailField
               icon={FiMapPin}
@@ -460,10 +563,10 @@ function AccountDetailPage() {
                 {isEditing ? (
                   // Dropdown to switch between fixed and flexible discount
                   <select
-                    value={formData.discountType}
+                    value={formData.discountPlanType}
                     onChange={(e) => setFormData({
                       ...formData,
-                      discountType: e.target.value
+                      discountPlanType: e.target.value
                     })}
                     style={{
                       padding: '0.25rem 0.5rem',
@@ -485,22 +588,22 @@ function AccountDetailPage() {
                     fontWeight: '600',
                     textTransform: 'capitalize',
                   }}>
-                    {merchant.discountType}
+                    {merchant.discountPlanType}
                   </span>
                 )}
               </div>
 
               {/* Fixed discount rate field - only shown for fixed plan */}
-              {formData.discountType === DISCOUNT_TYPES.FIXED && (
+              {formData.discountPlanType === DISCOUNT_TYPES.FIXED && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Discount Rate</p>
                   {isEditing ? (
                     <input
                       type="number"
-                      value={formData.discountRate}
+                      value={formData.fixedDiscountRate}
                       onChange={(e) => setFormData({
                         ...formData,
-                        discountRate: Number(e.target.value)
+                        fixedDiscountRate: Number(e.target.value)
                       })}
                       style={{
                         width: '80px',
@@ -513,14 +616,14 @@ function AccountDetailPage() {
                     />
                   ) : (
                     <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#0f172a' }}>
-                      {merchant.discountRate}%
+                      {merchant.fixedDiscountRate ?? 0}%
                     </p>
                   )}
                 </div>
               )}
 
               {/* Flexible discount thresholds - shown for flexible plan */}
-              {formData.discountType === DISCOUNT_TYPES.FLEXIBLE && merchant.flexibleThresholds && (
+              {formData.discountPlanType === DISCOUNT_TYPES.FLEXIBLE && merchant.flexibleThresholds && (
                 <div>
                   <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
                     Monthly order thresholds:
@@ -567,15 +670,17 @@ function AccountDetailPage() {
         <div>
           <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Account Created</p>
           <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#0f172a' }}>
-            {merchant.createdAt}
+            {merchant.createdAt || '—'}
           </p>
         </div>
+
         <div>
           <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Last Order</p>
           <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#0f172a' }}>
             {merchant.lastOrderDate || 'No orders yet'}
           </p>
         </div>
+
         {/* Show reinstatement details if the account was previously defaulted */}
         {merchant.reinstatedAt && (
           <div>
@@ -612,7 +717,7 @@ function AccountDetailPage() {
             </h3>
             <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
               You are reinstating <strong>{merchant.companyName}</strong> from
-              "In Default" to "Normal" status. A reason is required for the
+              " In Default " to " Normal " status. A reason is required for the
               audit trail as per company policy.
             </p>
 
@@ -626,6 +731,7 @@ function AccountDetailPage() {
             }}>
               Reason for Reinstatement *
             </label>
+
             <textarea
               value={reinstateReason}
               onChange={(e) => setReinstateReason(e.target.value)}
@@ -664,6 +770,7 @@ function AccountDetailPage() {
               >
                 Cancel
               </button>
+
               <button
                 onClick={handleReinstate}
                 // Disabled until the director types a reason
@@ -700,6 +807,7 @@ function DetailField({ icon: Icon, label, value, isEditing, onChange }) {
         <Icon size={14} style={{ color: '#94a3b8' }} />
         <p style={{ fontSize: '0.875rem', color: '#64748b' }}>{label}</p>
       </div>
+
       {isEditing ? (
         <input
           type="text"
@@ -722,7 +830,7 @@ function DetailField({ icon: Icon, label, value, isEditing, onChange }) {
           textAlign: 'right',
           maxWidth: '220px',
         }}>
-          {value}
+          {value || '—'}
         </p>
       )}
     </div>

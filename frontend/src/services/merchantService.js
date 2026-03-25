@@ -1,4 +1,4 @@
-// Merchant Service
+
 // Implements ISAMemberAPI interface and merchant management functions
 // Each function corresponds to a specific backend API endpoint
 
@@ -14,11 +14,37 @@ function convertMerchantFromBackend(merchant) {
     contactName: merchant.contact_name,
     contactEmail: merchant.contact_email,
     contactPhone: merchant.contact_phone,
+
+    // keep legacy aliases too because some pages still read these names
+    email: merchant.contact_email,
+    phone: merchant.contact_phone,
+
     address: merchant.address,
-    creditLimit: parseFloat(merchant.credit_limit),
+    creditLimit: parseFloat(merchant.credit_limit || 0),
+
+    // current debt can come back under different backend field names
+    // depending on which endpoint returned the merchant object
+    currentDebt: parseFloat(
+      merchant.current_debt ??
+      merchant.outstanding_balance ??
+      0
+    ),
+
     discountPlanType: merchant.discount_plan_type,
-    fixedDiscountRate: merchant.fixed_discount_rate ? parseFloat(merchant.fixed_discount_rate) : null,
+    discountType: merchant.discount_plan_type,
+
+    fixedDiscountRate: merchant.fixed_discount_rate != null
+      ? parseFloat(merchant.fixed_discount_rate)
+      : null,
+
+    // keep a plain discountRate alias for older page code
+    discountRate: merchant.fixed_discount_rate != null
+      ? parseFloat(merchant.fixed_discount_rate)
+      : 0,
+
     accountStatus: merchant.account_status,
+    status: merchant.account_status,
+
     status1stReminder: merchant.status_1st_reminder,
     status2ndReminder: merchant.status_2nd_reminder,
     date1stReminder: merchant.date_1st_reminder,
@@ -29,6 +55,22 @@ function convertMerchantFromBackend(merchant) {
     defaultReason: merchant.default_reason,
     createdAt: merchant.created_at,
     updatedAt: merchant.updated_at,
+
+    // extra metadata used by account detail / flexible discount views
+    lastOrderDate: merchant.last_order_date || null,
+    flexibleThresholds: merchant.flexible_thresholds || null,
+
+    // Keep these too because AccountsPage currently uses snake_case keys
+    company_name: merchant.company_name,
+    account_number: merchant.account_number,
+    contact_name: merchant.contact_name,
+    account_status: merchant.account_status,
+    credit_limit: parseFloat(merchant.credit_limit || 0),
+    current_debt: parseFloat(
+      merchant.current_debt ??
+      merchant.outstanding_balance ??
+      0
+    ),
   };
 }
 
@@ -44,7 +86,7 @@ function convertMerchantToBackend(data) {
     address: data.address,
     credit_limit: data.creditLimit,
     discount_plan_type: data.discountPlanType,
-    fixed_discount_rate: data.fixedDiscountRate || null,
+    fixed_discount_rate: data.fixedDiscountRate ?? null,
   };
 }
 
@@ -62,7 +104,7 @@ export async function sendCommercialApplication(regNumber, type, address, email,
       email,
       details,
     });
-    
+
     return true;
   } catch (error) {
     console.error('Failed to send commercial application:', error);
@@ -78,7 +120,7 @@ export async function sendCommercialApplication(regNumber, type, address, email,
 export async function checkCommercialApplication(regNumber) {
   try {
     const result = await apiClient.get(`/commercial-applications/check?reg_number=${regNumber}`);
-    
+
     // Return true if found and approved
     return result.found && result.status === 'approved';
   } catch (error) {
@@ -118,6 +160,21 @@ export async function getMerchantById(merchantId) {
 }
 
 /**
+ * Get the merchant account for the currently logged in merchant user
+ * Endpoint: GET /api/merchants/me
+ * Auth: Required (merchant)
+ */
+export async function getCurrentMerchant() {
+  try {
+    const merchant = await apiClient.get('/merchants/me');
+    return convertMerchantFromBackend(merchant);
+  } catch (error) {
+    console.error('Failed to get current merchant:', error);
+    return null;
+  }
+}
+
+/**
  * Get merchants filtered by account status
  * Endpoint: GET /api/merchants?status={status}
  * Auth: Required
@@ -140,27 +197,76 @@ export async function getMerchantsByStatus(status) {
  */
 export async function createMerchant(merchantData) {
   try {
-    const required = ['companyName', 'contactName', 'contactEmail', 'address', 'creditLimit', 'discountPlanType'];
+    // now required because backend creates both:
+    // 1) the merchant login user
+    // 2) the linked merchant account
+    const required = [
+      'username',
+      'password',
+      'email',
+      'companyName',
+      'contactName',
+      'contactEmail',
+      'address',
+      'creditLimit',
+      'discountPlanType',
+    ];
+
     for (const field of required) {
-      if (!merchantData[field]) {
+      if (
+        merchantData[field] === undefined ||
+        merchantData[field] === null ||
+        merchantData[field] === ''
+      ) {
         return {
           success: false,
-          error: `${field} is required`
+          error: `${field} is required`,
         };
       }
     }
-    
-    const backendData = convertMerchantToBackend(merchantData);
+
+    // build the exact backend payload expected by MerchantCreate
+    const backendData = {
+      username: merchantData.username,
+      password: merchantData.password,
+      email: merchantData.email,
+      company_name: merchantData.companyName,
+      contact_name: merchantData.contactName,
+      contact_email: merchantData.contactEmail,
+      contact_phone: merchantData.contactPhone || null,
+      address: merchantData.address,
+      credit_limit: merchantData.creditLimit,
+      discount_plan_type: merchantData.discountPlanType,
+      fixed_discount_rate: merchantData.fixedDiscountRate ?? null,
+    };
+
     const merchant = await apiClient.post('/merchants', backendData);
-    
+
     return {
       success: true,
-      merchant: convertMerchantFromBackend(merchant)
+      merchant: convertMerchantFromBackend(merchant),
     };
   } catch (error) {
+    // FastAPI validation errors can come back in a few different shapes
+    let errorMessage = 'Failed to create merchant';
+
+    if (Array.isArray(error?.details)) {
+      errorMessage = error.details
+        .map((item) => item.msg || JSON.stringify(item))
+        .join(', ');
+    } else if (Array.isArray(error?.detail)) {
+      errorMessage = error.detail
+        .map((item) => item.msg || JSON.stringify(item))
+        .join(', ');
+    } else if (typeof error?.detail === 'string') {
+      errorMessage = error.detail;
+    } else if (typeof error?.message === 'string') {
+      errorMessage = error.message;
+    }
+
     return {
       success: false,
-      error: error.message
+      error: errorMessage,
     };
   }
 }
@@ -173,26 +279,27 @@ export async function createMerchant(merchantData) {
 export async function updateMerchant(merchantId, updates) {
   try {
     const backendUpdates = {};
-    
-    if (updates.companyName) backendUpdates.company_name = updates.companyName;
-    if (updates.contactName) backendUpdates.contact_name = updates.contactName;
-    if (updates.contactEmail) backendUpdates.contact_email = updates.contactEmail;
+
+    // only send fields that were actually provided
+    if (updates.companyName !== undefined) backendUpdates.company_name = updates.companyName;
+    if (updates.contactName !== undefined) backendUpdates.contact_name = updates.contactName;
+    if (updates.contactEmail !== undefined) backendUpdates.contact_email = updates.contactEmail;
     if (updates.contactPhone !== undefined) backendUpdates.contact_phone = updates.contactPhone;
-    if (updates.address) backendUpdates.address = updates.address;
+    if (updates.address !== undefined) backendUpdates.address = updates.address;
     if (updates.creditLimit !== undefined) backendUpdates.credit_limit = updates.creditLimit;
-    if (updates.discountPlanType) backendUpdates.discount_plan_type = updates.discountPlanType;
+    if (updates.discountPlanType !== undefined) backendUpdates.discount_plan_type = updates.discountPlanType;
     if (updates.fixedDiscountRate !== undefined) backendUpdates.fixed_discount_rate = updates.fixedDiscountRate;
-    
+
     const merchant = await apiClient.patch(`/merchants/${merchantId}`, backendUpdates);
-    
+
     return {
       success: true,
-      merchant: convertMerchantFromBackend(merchant)
+      merchant: convertMerchantFromBackend(merchant),
     };
   } catch (error) {
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 }
@@ -230,20 +337,24 @@ export async function reinstateAccount(merchantId, reason, directorId) {
     if (!reason || !reason.trim()) {
       return {
         success: false,
-        error: 'Reinstatement reason is required'
+        error: 'Reinstatement reason is required',
       };
     }
-    
-    await apiClient.post(`/merchants/${merchantId}/reinstate`, {
+
+    // if backend returns the updated merchant, convert and return it
+    const merchant = await apiClient.post(`/merchants/${merchantId}/reinstate`, {
       reason,
-      director_id: directorId
+      director_id: directorId,
     });
-    
-    return { success: true };
+
+    return {
+      success: true,
+      merchant: merchant ? convertMerchantFromBackend(merchant) : null,
+    };
   } catch (error) {
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 }
@@ -253,6 +364,7 @@ export default {
   checkCommercialApplication,
   getAllMerchants,
   getMerchantById,
+  getCurrentMerchant,
   getMerchantsByStatus,
   createMerchant,
   updateMerchant,

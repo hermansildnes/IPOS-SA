@@ -13,12 +13,17 @@ import {
   FiPercent,
   FiAlertCircle,
   FiCheckCircle,
+  FiLock,
 } from 'react-icons/fi';
 
 function CreateAccountPage() {
   const navigate = useNavigate();
 
+  // form state for both the merchant login details
+  // and the merchant account/business details
   const [formData, setFormData] = useState({
+    username: '',
+    password: '',
     companyName: '',
     contactName: '',
     email: '',
@@ -29,7 +34,7 @@ function CreateAccountPage() {
     discountRate: '',
   });
 
-  //  validation errors for each field
+  // validation errors for each field
   const [errors, setErrors] = useState({});
 
   // success or error message after submitting
@@ -47,11 +52,22 @@ function CreateAccountPage() {
     }
   };
 
-
   const validateForm = () => {
     const newErrors = {};
 
-    // Check each required field is filled in
+    // login details are now required because account creation
+    // also creates the linked merchant user login
+    if (!formData.username.trim()) {
+      newErrors.username = 'Username is required';
+    }
+
+    if (!formData.password.trim()) {
+      newErrors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    }
+
+    // Check each required merchant/account field is filled in
     if (!formData.companyName.trim()) {
       newErrors.companyName = 'Company name is required';
     }
@@ -70,12 +86,15 @@ function CreateAccountPage() {
     if (!formData.address.trim()) {
       newErrors.address = 'Address is required';
     }
-    if (!formData.creditLimit || formData.creditLimit <= 0) {
+    if (!formData.creditLimit || Number(formData.creditLimit) <= 0) {
       newErrors.creditLimit = 'Credit limit must be greater than 0';
     }
+
     // Discount rate only required for fixed plans
-    if (formData.discountType === DISCOUNT_TYPES.FIXED &&
-        (!formData.discountRate || formData.discountRate < 0)) {
+    if (
+      formData.discountType === DISCOUNT_TYPES.FIXED &&
+      (formData.discountRate === '' || Number(formData.discountRate) < 0)
+    ) {
       newErrors.discountRate = 'Discount rate is required and must be 0 or greater';
     }
 
@@ -95,43 +114,42 @@ function CreateAccountPage() {
     }
 
     setIsCreating(true);
-
-    // delay to simulate an API call
-    await new Promise((resolve) => setTimeout(resolve, 800));
+    setMessage(null);
 
     // Prepare the data to send to the service
+    // backend now expects login fields as well as merchant details
     const merchantData = {
-      ...formData,
+      username: formData.username,
+      password: formData.password,
+      email: formData.email,
+      companyName: formData.companyName,
+      contactName: formData.contactName,
+      contactEmail: formData.email,
+      contactPhone: formData.phone,
+      address: formData.address,
       creditLimit: Number(formData.creditLimit),
-      discountRate: formData.discountType === DISCOUNT_TYPES.FIXED
-        ? Number(formData.discountRate)
-        : null,
-      // Flexible thresholds are set later via the edit page
-      // For now we use default thresholds if they pick flexible
-      flexibleThresholds: formData.discountType === DISCOUNT_TYPES.FLEXIBLE
-        ? [
-            { upTo: 1000, rate: 1 },
-            { upTo: 2000, rate: 2 },
-            { above: 2000, rate: 3 },
-          ]
-        : null,
+      discountPlanType: formData.discountType,
+      fixedDiscountRate:
+        formData.discountType === DISCOUNT_TYPES.FIXED
+          ? Number(formData.discountRate)
+          : null,
     };
 
     // create the merchant via the service layer
-    const result = createMerchant(merchantData);
+    const result = await createMerchant(merchantData);
 
     if (result.success) {
-     
       setMessage({
         type: 'success',
-        text: `Account created successfully! Redirecting to account details...`
+        text: 'Account created successfully! Redirecting to account details...'
       });
+
       setTimeout(() => {
         navigate(`/accounts/${result.merchant.id}`);
       }, 1500);
     } else {
       // failed - show the error from the service layer
-      setMessage({ type: 'error', text: result.error });
+      setMessage({ type: 'error', text: result.error || 'Failed to create account' });
       setIsCreating(false);
     }
   };
@@ -165,7 +183,7 @@ function CreateAccountPage() {
             Create New Merchant Account
           </h1>
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            All fields are required unless marked optional
+            Create the merchant login and account in one step
           </p>
         </div>
       </div>
@@ -184,10 +202,7 @@ function CreateAccountPage() {
           fontSize: '0.875rem',
           fontWeight: '500',
         }}>
-          {message.type === 'success'
-            ? <FiCheckCircle size={16} />
-            : <FiAlertCircle size={16} />
-          }
+          {message.type === 'success' ? <FiCheckCircle size={16} /> : <FiAlertCircle size={16} />}
           {message.text}
         </div>
       )}
@@ -195,7 +210,47 @@ function CreateAccountPage() {
       {/* Main form */}
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-        
+        {/* Login details section - these credentials are used by the new merchant to sign in */}
+        <div style={{
+          background: 'white',
+          borderRadius: '0.75rem',
+          border: '1px solid #e2e8f0',
+          padding: '1.5rem',
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            marginBottom: '1.25rem',
+          }}>
+            <FiUser size={16} style={{ color: '#6366f1' }} />
+            <h3 style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.9rem' }}>
+              Login Details
+            </h3>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <FormField
+              icon={FiUser}
+              label="Username"
+              value={formData.username}
+              onChange={(v) => handleChange('username', v)}
+              error={errors.username}
+              placeholder="e.g. merchant4"
+            />
+            <FormField
+              icon={FiLock}
+              label="Password"
+              value={formData.password}
+              onChange={(v) => handleChange('password', v)}
+              error={errors.password}
+              placeholder="Enter a temporary password"
+              type="password"
+            />
+          </div>
+        </div>
+
+        {/* Contact details section */}
         <div style={{
           background: 'white',
           borderRadius: '0.75rem',
@@ -308,19 +363,7 @@ function CreateAccountPage() {
                   boxSizing: 'border-box',
                 }}
               />
-              {errors.creditLimit && (
-                <p style={{
-                  fontSize: '0.75rem',
-                  color: '#ef4444',
-                  marginTop: '0.25rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                }}>
-                  <FiAlertCircle size={12} />
-                  {errors.creditLimit}
-                </p>
-              )}
+              {errors.creditLimit && <FieldError text={errors.creditLimit} />}
             </div>
 
             {/* Discount type dropdown */}
@@ -354,12 +397,6 @@ function CreateAccountPage() {
                 <option value={DISCOUNT_TYPES.FIXED}>Fixed - Same rate on all orders</option>
                 <option value={DISCOUNT_TYPES.FLEXIBLE}>Flexible - Tiered by monthly order value</option>
               </select>
-              <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.375rem' }}>
-                {formData.discountType === DISCOUNT_TYPES.FIXED
-                  ? 'A single discount percentage applied to every order'
-                  : 'Discount rate increases based on total monthly order value (default: 1% up to £1000, 2% up to £2000, 3% above £2000)'
-                }
-              </p>
             </div>
 
             {/* Discount rate field - only shown for fixed plans */}
@@ -392,19 +429,7 @@ function CreateAccountPage() {
                     boxSizing: 'border-box',
                   }}
                 />
-                {errors.discountRate && (
-                  <p style={{
-                    fontSize: '0.75rem',
-                    color: '#ef4444',
-                    marginTop: '0.25rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                  }}>
-                    <FiAlertCircle size={12} />
-                    {errors.discountRate}
-                  </p>
-                )}
+                {errors.discountRate && <FieldError text={errors.discountRate} />}
               </div>
             )}
           </div>
@@ -437,9 +462,7 @@ function CreateAccountPage() {
               display: 'flex',
               alignItems: 'center',
               gap: '0.5rem',
-              background: isCreating
-                ? '#cbd5e1'
-                : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              background: isCreating ? '#cbd5e1' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
               color: 'white',
               border: 'none',
               borderRadius: '0.625rem',
@@ -449,19 +472,7 @@ function CreateAccountPage() {
               cursor: isCreating ? 'not-allowed' : 'pointer',
             }}
           >
-            {isCreating ? (
-              <>
-                <div style={{
-                  width: '1rem',
-                  height: '1rem',
-                  border: '2px solid rgba(255,255,255,0.3)',
-                  borderTop: '2px solid white',
-                  borderRadius: '50%',
-                  animation: 'spin 0.8s linear infinite',
-                }} />
-                Creating...
-              </>
-            ) : (
+            {isCreating ? 'Creating...' : (
               <>
                 <FiSave size={16} />
                 Create Account
@@ -470,14 +481,23 @@ function CreateAccountPage() {
           </button>
         </div>
       </form>
-
-      {/* Spinner animation */}
-      <style>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
+  );
+}
+
+function FieldError({ text }) {
+  return (
+    <p style={{
+      fontSize: '0.75rem',
+      color: '#ef4444',
+      marginTop: '0.25rem',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.25rem',
+    }}>
+      <FiAlertCircle size={12} />
+      {text}
+    </p>
   );
 }
 
@@ -513,19 +533,7 @@ function FormField({ icon: Icon, label, value, onChange, error, placeholder, typ
           boxSizing: 'border-box',
         }}
       />
-      {error && (
-        <p style={{
-          fontSize: '0.75rem',
-          color: '#ef4444',
-          marginTop: '0.25rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.25rem',
-        }}>
-          <FiAlertCircle size={12} />
-          {error}
-        </p>
-      )}
+      {error && <FieldError text={error} />}
     </div>
   );
 }

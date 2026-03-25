@@ -9,67 +9,76 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   // user = the currently logged in user object (or null if not logged in)
   const [user, setUser] = useState(null);
-  
+
   // error = any error message from login attempts
   const [error, setError] = useState('');
-  
+
   // loading = true while we're checking if user is already logged in on app start
   const [loading, setLoading] = useState(true);
 
   // On app startup, check if there's a saved token and restore the user session
   // This runs once when the app loads
   useEffect(() => {
-  async function checkAuth() {
-    if (authService.isAuthenticated()) {
-      try {
-        const currentUser = await authService.getCurrentUser();
-        setUser(currentUser);
-      } catch (error) {
-        console.error('Session expired or invalid token');
-        // Clear invalid token
-        authService.logout();
-        setUser(null);
-        setError('');
+    async function checkAuth() {
+      if (authService.isAuthenticated()) {
+        try {
+          const currentUser = await authService.getCurrentUser();
+          setUser(currentUser);
+        } catch (error) {
+          console.error('Session expired or invalid token');
+          // Clear invalid token
+          authService.logout();
+          setUser(null);
+          setError('');
+        }
       }
+      setLoading(false);
     }
-    setLoading(false);
-  }
 
-  checkAuth();
-}, []);
+    checkAuth();
+  }, []);
 
   // Login function - calls the real backend auth service
   // Returns true if login succeeded, false if it failed
   const login = async (username, password) => {
-  // Clear any previous errors
-  setError('');
-  setUser(null);
-  
-  try {
-    const result = await authService.login(username, password);
-    
-    if (result.success) {
-      setUser(result.user);
-      return true;
-    } else {
-      setError(result.error || 'Login failed');
+    // Clear any previous errors
+    setError('');
+    setUser(null);
+
+    try {
+      const result = await authService.login(username, password);
+
+      if (result.success) {
+        setUser(result.user);
+        return true;
+      } else {
+        setError(result.error || 'Login failed');
+        return false;
+      }
+    } catch (err) {
+      setError('Login failed. Please try again.');
       return false;
     }
-  } catch (err) {
-    setError('Login failed. Please try again.');
-    return false;
-  }
-};
+  };
 
-  // Logout function - clears the user and calls backend logout
+  // Logout function - clears the user, clears any persisted cart and calls backend logout
   const logout = async () => {
+    // remove any user-specific cart so cart state does not carry across sessions
+    if (user?.id) {
+      localStorage.removeItem(`cart_${user.id}`);
+    }
+
+    // clean up any older/shared cart keys too
+    localStorage.removeItem('cart');
+    localStorage.removeItem('cart_guest');
+
     await authService.logout();
     setUser(null);
     setError('');
   };
 
   // Show a loading screen while we check if user is logged in
-  // This prevents a flash of the login page before redirecting to dashboad
+  // This prevents a flash of the login page before redirecting to dashboard
   if (loading) {
     return (
       <div style={{

@@ -8,6 +8,7 @@ import {
   FiBarChart2,
   FiLogOut,
   FiPackage,
+  FiUser,
 } from 'react-icons/fi';
 import logo from '../../assets/logo.png';
 
@@ -39,8 +40,15 @@ const NAV_ITEMS = [
     label: 'Accounts',
     icon: FiUsers,
     path: '/accounts',
-    // Only admin and director can manage merchant accounts
+    // Management roles can view merchant accounts
     roles: ['admin', 'director', 'manager'],
+  },
+  {
+    label: 'My Account',
+    icon: FiUser,
+    path: '/my-account',
+    // Merchants get their own self-service account page
+    roles: ['merchant'],
   },
   {
     label: 'Reports',
@@ -50,12 +58,12 @@ const NAV_ITEMS = [
     roles: ['admin', 'director', 'manager'],
   },
   {
-  label: 'Applications',
-  icon: FiPackage,
-  path: '/applications',
-  // Only admin can manage applications
-  roles: ['admin'],
-},
+    label: 'Applications',
+    icon: FiPackage,
+    path: '/applications',
+    // Only admin can manage applications
+    roles: ['admin'],
+  },
 ];
 
 // colour badge shown next to the user's name to identify their role quickly
@@ -70,83 +78,125 @@ function Sidebar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
+  // normalise the current role first so role checks work reliably
+  const userRole = user?.role?.toLowerCase() || '';
+
   // Log the user out and send them back to the login page
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
   };
 
   // only show nav items the current user's role is allowed to see
   const visibleNavItems = NAV_ITEMS.filter((item) =>
-    item.roles.includes(user?.role)
+    item.roles.includes(userRole)
   );
 
-  const roleStyle = ROLE_COLORS[user?.role] || ROLE_COLORS.merchant;
+  // role badge styling - fallback included in case an unexpected role appears
+  const roleStyle = ROLE_COLORS[userRole] || {
+    bg: '#e2e8f0',
+    text: '#475569',
+    label: user?.role || 'User',
+  };
 
   return (
-    <div style={{
-      width: '240px',
-      minHeight: '100vh',
-      background: '#0f172a',
-      display: 'flex',
-      flexDirection: 'column',
-      borderRight: '1px solid rgba(255,255,255,0.06)',
-      position: 'fixed',
-      left: 0,
-      top: 0,
-      zIndex: 100,
-    }}>
-
-      {/* logo and app name at the top of the sidebar */}
-      <div style={{
-        padding: '1.5rem',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+    <div
+      style={{
+        width: '240px',
+        minHeight: '100vh',
+        background: '#0f172a',
         display: 'flex',
-        alignItems: 'center',
-        gap: '0.75rem',
-      }}>
-        <div style={{
-          width: '36px',
-          height: '36px',
-          borderRadius: '8px',
-          background: 'white',
+        flexDirection: 'column',
+        borderRight: '1px solid rgba(255,255,255,0.06)',
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        zIndex: 100,
+      }}
+    >
+      {/* logo and app name at the top of the sidebar */}
+      <div
+        style={{
+          padding: '1.5rem',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-          flexShrink: 0,
-        }}>
+          gap: '0.75rem',
+        }}
+      >
+        <div
+          style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '8px',
+            background: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            flexShrink: 0,
+          }}
+        >
           <img
             src={logo}
             alt="Logo"
-            style={{ width: '28px', height: '28px', objectFit: 'contain' }}
+            style={{
+              width: '28px',
+              height: '28px',
+              objectFit: 'contain',
+            }}
           />
         </div>
+
         <div>
-          <p style={{ color: 'white', fontWeight: '700', fontSize: '0.9rem', lineHeight: 1 }}>
+          <p
+            style={{
+              color: 'white',
+              fontWeight: '700',
+              fontSize: '0.9rem',
+              lineHeight: 1,
+            }}
+          >
             IPOS-SA
           </p>
-          <p style={{ color: '#475569', fontSize: '0.65rem', marginTop: '0.2rem' }}>
+          <p
+            style={{
+              color: '#475569',
+              fontSize: '0.65rem',
+              marginTop: '0.2rem',
+            }}
+          >
             InfoPharma Ltd.
           </p>
         </div>
       </div>
 
       {/* navigation links - filtered by role above */}
-      <nav style={{ flex: 1, padding: '1rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-        <p style={{
-          color: '#334155',
-          fontSize: '0.65rem',
-          fontWeight: '600',
-          letterSpacing: '0.08em',
-          padding: '0 0.75rem',
-          marginBottom: '0.5rem',
-        }}>
+      <nav
+        style={{
+          flex: 1,
+          padding: '1rem 0.75rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.25rem',
+        }}
+      >
+        <p
+          style={{
+            color: '#334155',
+            fontSize: '0.65rem',
+            fontWeight: '600',
+            letterSpacing: '0.08em',
+            padding: '0 0.75rem',
+            marginBottom: '0.5rem',
+          }}
+        >
           NAVIGATION
         </p>
 
         {visibleNavItems.map((item) => {
           const Icon = item.icon;
+
           return (
             // NavLink automatically adds an 'active' class when on that route
             // used it to highlight the current page in the sidebar
@@ -176,56 +226,68 @@ function Sidebar() {
       </nav>
 
       {/* User info and logout button at the bottom of the sidebar */}
-      <div style={{
-        padding: '1rem 0.75rem',
-        borderTop: '1px solid rgba(255,255,255,0.06)',
-      }}>
+      <div
+        style={{
+          padding: '1rem 0.75rem',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+        }}
+      >
         {/* Shows who is currently logged in */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          padding: '0.625rem 0.75rem',
-          marginBottom: '0.5rem',
-        }}>
-          {/* Avatar circle using the first letter of the user's name */}
-          <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            background: 'rgba(99,102,241,0.2)',
+        <div
+          style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
-            color: '#818cf8',
-            fontSize: '0.875rem',
-            fontWeight: '600',
-            flexShrink: 0,
-          }}>
-            {user?.name?.charAt(0) || 'U'}
-          </div>
-          <div style={{ overflow: 'hidden' }}>
-            <p style={{
-              color: 'white',
-              fontSize: '0.8rem',
-              fontWeight: '500',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}>
-              {user?.name}
-            </p>
-            {/* role badge - colour coded to match the login page */}
-            <span style={{
-              display: 'inline-block',
-              background: roleStyle.bg,
-              color: roleStyle.text,
-              fontSize: '0.6rem',
+            gap: '0.75rem',
+            padding: '0.625rem 0.75rem',
+            marginBottom: '0.5rem',
+          }}
+        >
+          {/* Avatar circle using the first available initial */}
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              background: 'rgba(99,102,241,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#818cf8',
+              fontSize: '0.875rem',
               fontWeight: '600',
-              padding: '0.1rem 0.4rem',
-              borderRadius: '9999px',
-              marginTop: '0.15rem',
-            }}>
+              flexShrink: 0,
+            }}
+          >
+            {user?.name?.charAt(0) || user?.username?.charAt(0) || 'U'}
+          </div>
+
+          <div style={{ overflow: 'hidden' }}>
+            <p
+              style={{
+                color: 'white',
+                fontSize: '0.8rem',
+                fontWeight: '500',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {user?.name || user?.username || 'User'}
+            </p>
+
+            {/* role badge - colour coded to match the login page */}
+            <span
+              style={{
+                display: 'inline-block',
+                background: roleStyle.bg,
+                color: roleStyle.text,
+                fontSize: '0.6rem',
+                fontWeight: '600',
+                padding: '0.1rem 0.4rem',
+                borderRadius: '9999px',
+                marginTop: '0.15rem',
+              }}
+            >
               {roleStyle.label}
             </span>
           </div>
