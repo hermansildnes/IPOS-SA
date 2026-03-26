@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   FiShoppingCart,
@@ -16,75 +16,113 @@ function PlaceOrderPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  
-  // Get cart from navigation state (passed from CataloguePage)
+
+  const cartStorageKey = user?.id ? `cart_${user.id}` : 'cart_guest';
+
+  // If nothing was passed by navigation state, recover from this user's saved cart
   const initialCart = location.state?.cart || [];
-  
+
   // State
   const [cart, setCart] = useState(initialCart);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
-  
+
+  // Restore cart from storage if page is refreshed or opened directly
+  useEffect(() => {
+    if (!user) {
+      setCart([]);
+      return;
+    }
+
+    if (location.state?.cart && location.state.cart.length > 0) {
+      setCart(location.state.cart);
+      return;
+    }
+
+    const savedCart = localStorage.getItem(cartStorageKey);
+    if (savedCart) {
+      try {
+        setCart(JSON.parse(savedCart));
+      } catch (error) {
+        console.error('Failed to parse saved cart:', error);
+        localStorage.removeItem(cartStorageKey);
+        setCart([]);
+      }
+    } else {
+      setCart([]);
+    }
+  }, [user, location.state, cartStorageKey]);
+
+  // Keep saved cart in sync while editing quantities on this page
+  useEffect(() => {
+    if (!user) return;
+
+    if (cart.length > 0) {
+      localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+    } else {
+      localStorage.removeItem(cartStorageKey);
+    }
+  }, [cart, user, cartStorageKey]);
+
   // Update quantity for a cart item
   const updateQuantity = (productId, newQuantity) => {
-    if (newQuantity < 1) return; // Don't allow 0 or negative
-    
+    if (newQuantity < 1) return;
+
     setCart(cart.map(item =>
       item.product.id === productId
         ? { ...item, quantity: newQuantity }
         : item
     ));
   };
-  
+
   // Remove item from cart
   const removeItem = (productId) => {
     setCart(cart.filter(item => item.product.id !== productId));
   };
-  
+
   // Calculate totals
   const subtotal = cart.reduce((sum, item) =>
     sum + (item.product.packageCost * item.quantity), 0
   );
-  
-  // For now, assume 5% discount (will be calculated by backend later)
+
+  // For now, assume 5% discount
   const discountPercentage = 5;
   const discountAmount = subtotal * (discountPercentage / 100);
   const total = subtotal - discountAmount;
-  
+
   // Submit order
   const handleSubmit = async () => {
     if (cart.length === 0) {
       setMessage({ type: 'error', text: 'Cart is empty' });
       return;
     }
-    
+
     setIsSubmitting(true);
     setMessage(null);
-    
-    // Small delay to show loading state
+
     await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Format items for API
+
     const items = cart.map(item => ({
-      product_id: item.product.id,  // snake_case (matches backend)
+      product_id: item.product.id,
       quantity: item.quantity,
     }));
-    
-    // Call the backend API
+
     const result = await placeOrder(items);
-    
+
     if (result.success) {
-      // Success - show message and redirect after delay
+      // Clear cart state and this user's saved cart
+      setCart([]);
+      localStorage.removeItem(cartStorageKey);
+
       setMessage({
         type: 'success',
         text: `Order created successfully! Order ID: ${result.orderId.substring(0, 8)}...`
       });
-      
+
       setTimeout(() => {
         navigate('/orders');
       }, 2000);
     } else {
-      // Error - show message
       setMessage({ type: 'error', text: result.error });
       setIsSubmitting(false);
     }
@@ -92,7 +130,7 @@ function PlaceOrderPage() {
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1200px', margin: '0 auto' }}>
-      
+
       {/* Page Header */}
       <div style={{ marginBottom: '2rem' }}>
         <button
@@ -114,7 +152,7 @@ function PlaceOrderPage() {
           <FiArrowLeft size={16} />
           Back to Catalogue
         </button>
-        
+
         <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#0f172a' }}>
           Review Your Order
         </h1>
@@ -122,7 +160,7 @@ function PlaceOrderPage() {
           Review items and quantities before placing your order
         </p>
       </div>
-      
+
       {/* Success/Error Message */}
       {message && (
         <div style={{
@@ -145,7 +183,7 @@ function PlaceOrderPage() {
           {message.text}
         </div>
       )}
-      
+
       {/* Empty Cart State */}
       {cart.length === 0 && (
         <div style={{
@@ -179,11 +217,11 @@ function PlaceOrderPage() {
           </button>
         </div>
       )}
-      
+
       {/* Cart with Items */}
       {cart.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: '1.5rem' }}>
-          
+
           {/* Cart Items */}
           <div>
             <div style={{
@@ -211,7 +249,7 @@ function PlaceOrderPage() {
                 <div style={{ textAlign: 'right' }}>Total</div>
                 <div></div>
               </div>
-              
+
               {/* Cart Items */}
               {cart.map(item => (
                 <CartItem
@@ -223,7 +261,7 @@ function PlaceOrderPage() {
               ))}
             </div>
           </div>
-          
+
           {/* Order Summary */}
           <div>
             <div style={{
@@ -242,25 +280,25 @@ function PlaceOrderPage() {
               }}>
                 Order Summary
               </h3>
-              
+
               {/* Summary Rows */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
                   <span style={{ color: '#64748b' }}>Subtotal</span>
                   <span style={{ fontWeight: '600', color: '#0f172a' }}>£{subtotal.toFixed(2)}</span>
                 </div>
-                
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
                   <span style={{ color: '#64748b' }}>Discount ({discountPercentage}%)</span>
                   <span style={{ fontWeight: '600', color: '#10b981' }}>-£{discountAmount.toFixed(2)}</span>
                 </div>
-                
+
                 <div style={{
                   height: '1px',
                   background: '#e2e8f0',
                   margin: '0.5rem 0',
                 }}></div>
-                
+
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem' }}>
                   <span style={{ fontWeight: '600', color: '#0f172a' }}>Total</span>
                   <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '1.25rem' }}>
@@ -268,7 +306,7 @@ function PlaceOrderPage() {
                   </span>
                 </div>
               </div>
-              
+
               {/* Info Box */}
               <div style={{
                 background: '#eff6ff',
@@ -282,7 +320,7 @@ function PlaceOrderPage() {
               }}>
                 <strong>Note:</strong> Your account discount has been applied. Final discount amount may vary based on your monthly order total (flexible plans only).
               </div>
-              
+
               {/* Place Order Button */}
               <button
                 onClick={handleSubmit}
@@ -324,8 +362,7 @@ function PlaceOrderPage() {
                   </>
                 )}
               </button>
-              
-              {/* Spinner Animation */}
+
               <style>{`
                 @keyframes spin {
                   to { transform: rotate(360deg); }
@@ -342,7 +379,7 @@ function PlaceOrderPage() {
 // Cart Item Component
 function CartItem({ item, onUpdateQuantity, onRemove }) {
   const itemTotal = item.product.packageCost * item.quantity;
-  
+
   return (
     <div style={{
       display: 'grid',
@@ -366,12 +403,12 @@ function CartItem({ item, onUpdateQuantity, onRemove }) {
           Code: {item.product.productCode}
         </div>
       </div>
-      
+
       {/* Price */}
       <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
         £{item.product.packageCost.toFixed(2)}
       </div>
-      
+
       {/* Quantity Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <button
@@ -391,7 +428,7 @@ function CartItem({ item, onUpdateQuantity, onRemove }) {
         >
           <FiMinus size={14} />
         </button>
-        
+
         <div style={{
           width: '50px',
           textAlign: 'center',
@@ -401,7 +438,7 @@ function CartItem({ item, onUpdateQuantity, onRemove }) {
         }}>
           {item.quantity}
         </div>
-        
+
         <button
           onClick={() => onUpdateQuantity(item.product.id, item.quantity + 1)}
           style={{
@@ -420,7 +457,7 @@ function CartItem({ item, onUpdateQuantity, onRemove }) {
           <FiPlus size={14} />
         </button>
       </div>
-      
+
       {/* Item Total */}
       <div style={{
         fontSize: '0.875rem',
@@ -430,7 +467,7 @@ function CartItem({ item, onUpdateQuantity, onRemove }) {
       }}>
         £{itemTotal.toFixed(2)}
       </div>
-      
+
       {/* Remove Button */}
       <button
         onClick={() => onRemove(item.product.id)}

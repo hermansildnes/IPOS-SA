@@ -150,7 +150,8 @@ function OrderDetailPage() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ padding: '1.5rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
       {/* back button and header */}
       <div>
@@ -535,6 +536,7 @@ function OrderDetailPage() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

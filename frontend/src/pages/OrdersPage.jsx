@@ -8,51 +8,75 @@ import {
   FiTruck,
   FiCheckCircle,
 } from 'react-icons/fi';
-import { viewPreviousOrders } from '../services/orderService';
+import { viewPreviousOrders, viewAllOrders } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
-import { ORDER_STATUS, ORDER_STATUS_STYLES } from '../utils/constants';
-import { apiClient } from '../services/apiClient';  
+import { ORDER_STATUS, ORDER_STATUS_STYLES, ROLES } from '../utils/constants';
+import { apiClient } from '../services/apiClient';
 
 function OrdersPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
-  // State
+
+  // orders = the currently displayed orders after role based loading/filtering
   const [orders, setOrders] = useState([]);
+
+  // loading = true while we fetch orders from the backend
   const [loading, setLoading] = useState(true);
+
+  // statusFilter = currently selected order status card (or null for all)
   const [statusFilter, setStatusFilter] = useState(null);
-  const [merchantId, setMerchantId] = useState(null);  // NEW
-  
-  // Get merchant ID for merchant users
+
+  // merchants need their merchant account id before they can load their own orders
+  const [merchantId, setMerchantId] = useState(null);
+
+  // support both constants based roles and raw backend string roles
+  const isMerchant = user?.role === ROLES.MERCHANT || user?.role === 'merchant';
+  const isAdminOrManager =
+    user?.role === ROLES.ADMIN ||
+    user?.role === ROLES.MANAGER ||
+    user?.role === 'admin' ||
+    user?.role === 'manager';
+
+  // Only merchants need to resolve their merchant account ID
+  // admin/manager can directly load the global order history
   useEffect(() => {
     async function loadMerchantId() {
-      if (user?.role === 'merchant') {
-        try {
-          const merchant = await apiClient.get('/merchants/me');
-          setMerchantId(merchant.id);
-        } catch (err) {
-          console.error('Failed to load merchant ID:', err);
-        }
-      } else if (user) {
-        // For non-merchants (admin/manager), we'd need different logic
-        // For now, just set loading to false
-        setLoading(false);
+      try {
+        const merchant = await apiClient.get('/merchants/me');
+        setMerchantId(merchant.id);
+      } catch (err) {
+        console.error('Failed to load merchant ID:', err);
+        setMerchantId(null);
       }
     }
-    
-    if (user) {
+
+    if (isMerchant) {
       loadMerchantId();
     }
-  }, [user]);
-  
-  // Load orders when merchantId changes
+  }, [isMerchant]);
+
+  // Load orders for the current role
+  // merchants = only their own orders
+  // admin/manager = all orders across merchants
   useEffect(() => {
     async function loadOrders() {
-      if (!merchantId) return;
-      
       setLoading(true);
+
       try {
-        const data = await viewPreviousOrders(merchantId, statusFilter);
+        let data = [];
+
+        if (isMerchant) {
+          // merchant order history depends on resolving the merchant account first
+          if (!merchantId) {
+            setOrders([]);
+            return;
+          }
+
+          data = await viewPreviousOrders(merchantId, statusFilter);
+        } else if (isAdminOrManager) {
+          data = await viewAllOrders(statusFilter);
+        }
+
         setOrders(data);
       } catch (err) {
         console.error('Failed to load orders:', err);
@@ -61,13 +85,16 @@ function OrdersPage() {
         setLoading(false);
       }
     }
-    
-    if (merchantId) {
-      loadOrders();
-    }
-  }, [merchantId, statusFilter]);
-  
-  // Calculate status counts
+
+    if (!user) return;
+
+    // don't try loading merchant orders until merchantId has been resolved
+    if (isMerchant && !merchantId) return;
+
+    loadOrders();
+  }, [user, isMerchant, isAdminOrManager, merchantId, statusFilter]);
+
+  // counts for the status filter cards at the top
   const statusCounts = {
     all: orders.length,
     accepted: orders.filter(o => o.status === ORDER_STATUS.ACCEPTED).length,
@@ -76,11 +103,14 @@ function OrdersPage() {
     delivered: orders.filter(o => o.status === ORDER_STATUS.DELIVERED).length,
   };
 
+  // page subtitle changes depending on who is viewing the page
+  const pageDescription = isMerchant
+    ? 'View and track all your orders'
+    : 'View and manage all merchant orders';
 
   return (
     <div style={{ padding: '1.5rem' }}>
-      
-      {/* Page Header */}
+      {/* Page header */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -92,33 +122,35 @@ function OrdersPage() {
             Order History
           </h1>
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            View and track all your orders
+            {pageDescription}
           </p>
         </div>
-        
-        {/* New Order Button */}
-        <button
-          onClick={() => navigate('/catalogue')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '0.625rem',
-            padding: '0.75rem 1.25rem',
-            fontSize: '0.875rem',
-            fontWeight: '600',
-            cursor: 'pointer',
-          }}
-        >
-          <FiShoppingCart size={18} />
-          New Order
-        </button>
+
+        {/* only merchants should see the quick action to start a new order */}
+        {isMerchant && (
+          <button
+            onClick={() => navigate('/catalogue')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.625rem',
+              padding: '0.75rem 1.25rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+            }}
+          >
+            <FiShoppingCart size={18} />
+            New Order
+          </button>
+        )}
       </div>
-      
-      {/* Status Filter Cards */}
+
+      {/* status filter cards */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -166,8 +198,8 @@ function OrdersPage() {
           color="#10b981"
         />
       </div>
-      
-      {/* Loading State */}
+
+      {/* Loading state */}
       {loading && (
         <div style={{
           background: 'white',
@@ -193,8 +225,8 @@ function OrdersPage() {
           `}</style>
         </div>
       )}
-      
-      {/* Empty State */}
+
+      {/* Empty state */}
       {!loading && orders.length === 0 && (
         <div style={{
           background: 'white',
@@ -210,10 +242,14 @@ function OrdersPage() {
           <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
             {statusFilter
               ? 'Try selecting a different status filter'
-              : 'Start by browsing the catalogue and placing your first order'
+              : isMerchant
+                ? 'Start by browsing the catalogue and placing your first order'
+                : 'No merchant orders are available yet'
             }
           </p>
-          {!statusFilter && (
+
+          {/* merchant-only call to action */}
+          {!statusFilter && isMerchant && (
             <button
               onClick={() => navigate('/catalogue')}
               style={{
@@ -232,8 +268,8 @@ function OrdersPage() {
           )}
         </div>
       )}
-      
-      {/* Orders Table */}
+
+      {/* Orders table */}
       {!loading && orders.length > 0 && (
         <div style={{
           background: 'white',
@@ -241,10 +277,12 @@ function OrdersPage() {
           borderRadius: '0.75rem',
           overflow: 'hidden',
         }}>
-          {/* Table Header */}
+          {/* Table header changes slightly for merchant vs admin/manager view */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: '150px 1fr 120px 120px 150px 100px',
+            gridTemplateColumns: isMerchant
+              ? '150px 1fr 120px 120px 150px 100px'
+              : '150px 1fr 1fr 120px 120px 150px 100px',
             gap: '1rem',
             padding: '1rem 1.25rem',
             background: '#f8fafc',
@@ -256,24 +294,26 @@ function OrdersPage() {
           }}>
             <div>Order ID</div>
             <div>Date</div>
+            {!isMerchant && <div>Merchant</div>}
             <div>Total</div>
             <div>Discount</div>
             <div>Amount Due</div>
             <div>Status</div>
           </div>
-          
-          {/* Table Rows */}
+
+          {/* Clickable rows - go to the full order detail page */}
           {orders.map(order => (
             <OrderRow
               key={order.id}
               order={order}
+              isMerchantView={isMerchant}
               onClick={() => navigate(`/orders/${order.id}`)}
             />
           ))}
         </div>
       )}
-      
-      {/* Results Count */}
+
+      {/* Results count */}
       {!loading && orders.length > 0 && (
         <p style={{
           color: '#64748b',
@@ -288,7 +328,6 @@ function OrdersPage() {
     </div>
   );
 }
-
 
 function StatusFilterCard({ label, count, icon: Icon, active, onClick, color }) {
   return (
@@ -337,27 +376,28 @@ function StatusFilterCard({ label, count, icon: Icon, active, onClick, color }) 
   );
 }
 
-// Order Row Component
-function OrderRow({ order, onClick }) {
+function OrderRow({ order, isMerchantView, onClick }) {
   const statusStyle = ORDER_STATUS_STYLES[order.status];
-  
-  // Format date
+
+  // format date once so the render stays cleaner
   const orderDate = new Date(order.orderDate);
   const formattedDate = orderDate.toLocaleDateString('en-GB', {
     day: '2-digit',
     month: 'short',
-    year: 'numeric'
+    year: 'numeric',
   });
-  
-  // Truncate order ID for display
+
+  // shorter display version of the UUID for the table row
   const shortOrderId = order.id.substring(0, 8).toUpperCase();
-  
+
   return (
     <div
       onClick={onClick}
       style={{
         display: 'grid',
-        gridTemplateColumns: '150px 1fr 120px 120px 150px 100px',
+        gridTemplateColumns: isMerchantView
+          ? '150px 1fr 120px 120px 150px 100px'
+          : '150px 1fr 1fr 120px 120px 150px 100px',
         gap: '1rem',
         padding: '1.25rem',
         borderBottom: '1px solid #f1f5f9',
@@ -379,7 +419,7 @@ function OrderRow({ order, onClick }) {
           #{shortOrderId}
         </div>
       </div>
-      
+
       {/* Date */}
       <div style={{
         display: 'flex',
@@ -391,23 +431,30 @@ function OrderRow({ order, onClick }) {
         <FiCalendar size={14} />
         {formattedDate}
       </div>
-      
+
+      {/* Merchant name is only shown on the admin/manager table */}
+      {!isMerchantView && (
+        <div style={{ fontSize: '0.875rem', color: '#0f172a', fontWeight: '600' }}>
+          {order.merchantName || 'Unknown merchant'}
+        </div>
+      )}
+
       {/* Total */}
       <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
         £{order.total.toFixed(2)}
       </div>
-      
+
       {/* Discount */}
       <div style={{ fontSize: '0.875rem', color: '#10b981', fontWeight: '600' }}>
         -£{order.discountAmount.toFixed(2)}
       </div>
-      
-      {/* Amount Due */}
+
+      {/* Amount due */}
       <div style={{ fontSize: '0.875rem', fontWeight: '700', color: '#0f172a' }}>
         £{order.amountDue.toFixed(2)}
       </div>
-      
-      {/* Status Badge */}
+
+      {/* Status badge */}
       <div>
         <span style={{
           display: 'inline-block',

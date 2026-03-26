@@ -9,38 +9,58 @@ import {
   FiMinus,
 } from 'react-icons/fi';
 import { getCatalogue } from '../services/orderService';
+import { useAuth } from '../context/AuthContext';
 
 function CataloguePage() {
   const navigate = useNavigate();
-  
+  const { user } = useAuth();
+
+  // Build a cart key tied to the logged-in user
+  const cartStorageKey = user?.id ? `cart_${user.id}` : 'cart_guest';
+
   // State
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState([]);
-  
+
   // Load products on mount
   useEffect(() => {
     loadProducts();
   }, []);
-  
-  // Load cart from localStorage on mount
+
+  // Load cart for the current logged-in user
   useEffect(() => {
-    const savedCart = localStorage.getItem('cart');
+    if (!user) {
+      setCart([]);
+      return;
+    }
+
+    const savedCart = localStorage.getItem(cartStorageKey);
     if (savedCart) {
-      setCart(JSON.parse(savedCart));
-    }
-  }, []);
-  
-  // Save cart to localStorage whenever it changes
-  useEffect(() => {
-    if (cart.length > 0) {
-      localStorage.setItem('cart', JSON.stringify(cart));
+      try {
+        setCart(JSON.parse(savedCart));
+      } catch (error) {
+        console.error('Failed to parse saved cart:', error);
+        localStorage.removeItem(cartStorageKey);
+        setCart([]);
+      }
     } else {
-      localStorage.removeItem('cart');
+      setCart([]);
     }
-  }, [cart]);
-  
+  }, [user, cartStorageKey]);
+
+  // Save cart for the current logged-in user whenever it changes
+  useEffect(() => {
+    if (!user) return;
+
+    if (cart.length > 0) {
+      localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+    } else {
+      localStorage.removeItem(cartStorageKey);
+    }
+  }, [cart, user, cartStorageKey]);
+
   // Load products function
   async function loadProducts() {
     setLoading(true);
@@ -48,11 +68,11 @@ function CataloguePage() {
     setProducts(data);
     setLoading(false);
   }
-  
+
   // Filter products based on search query
   const filteredProducts = products.filter(product => {
     if (!searchQuery.trim()) return true;
-    
+
     const query = searchQuery.toLowerCase();
     return (
       product.name.toLowerCase().includes(query) ||
@@ -60,24 +80,22 @@ function CataloguePage() {
       product.description?.toLowerCase().includes(query)
     );
   });
-  
+
   // Add to cart
   const addToCart = (product) => {
     const existingItem = cart.find(item => item.product.id === product.id);
-    
+
     if (existingItem) {
-      // Increase quantity
       setCart(cart.map(item =>
         item.product.id === product.id
           ? { ...item, quantity: item.quantity + 1 }
           : item
       ));
     } else {
-      // Add new item
       setCart([...cart, { product, quantity: 1 }]);
     }
   };
-  
+
   // Update cart quantity
   const updateCartQuantity = (productId, newQuantity) => {
     if (newQuantity <= 0) {
@@ -90,13 +108,13 @@ function CataloguePage() {
       ));
     }
   };
-  
+
   // Get quantity in cart for a product
   const getCartQuantity = (productId) => {
     const item = cart.find(item => item.product.id === productId);
     return item ? item.quantity : 0;
   };
-  
+
   // Calculate cart total
   const cartTotal = cart.reduce((sum, item) =>
     sum + (item.product.packageCost * item.quantity), 0
@@ -104,7 +122,7 @@ function CataloguePage() {
 
   return (
     <div style={{ padding: '1.5rem' }}>
-      
+
       {/* Page Header */}
       <div style={{
         display: 'flex',
@@ -120,7 +138,7 @@ function CataloguePage() {
             Browse products and add items to your order
           </p>
         </div>
-        
+
         {/* View Cart Button */}
         {cart.length > 0 && (
           <button
@@ -162,7 +180,7 @@ function CataloguePage() {
           </button>
         )}
       </div>
-      
+
       {/* Search Bar */}
       <div style={{
         background: 'white',
@@ -199,7 +217,7 @@ function CataloguePage() {
           />
         </div>
       </div>
-      
+
       {/* Loading State */}
       {loading && (
         <div style={{
@@ -226,7 +244,7 @@ function CataloguePage() {
           `}</style>
         </div>
       )}
-      
+
       {/* Empty State - No Products at All */}
       {!loading && products.length === 0 && (
         <div style={{
@@ -245,7 +263,7 @@ function CataloguePage() {
           </p>
         </div>
       )}
-      
+
       {/* Empty State - No Search Results */}
       {!loading && products.length > 0 && filteredProducts.length === 0 && (
         <div style={{
@@ -279,7 +297,7 @@ function CataloguePage() {
           </button>
         </div>
       )}
-      
+
       {/* Products Grid */}
       {!loading && filteredProducts.length > 0 && (
         <div style={{
@@ -298,7 +316,7 @@ function CataloguePage() {
           ))}
         </div>
       )}
-      
+
       {/* Results Count */}
       {!loading && filteredProducts.length > 0 && (
         <p style={{
@@ -319,7 +337,7 @@ function CataloguePage() {
 function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
   const isLowStock = product.stockQuantity < product.minStockLevel;
   const isOutOfStock = product.stockQuantity === 0;
-  
+
   return (
     <div style={{
       background: 'white',
@@ -356,7 +374,7 @@ function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
             {product.productCode}
           </span>
         </div>
-        
+
         <p style={{
           fontSize: '0.875rem',
           color: '#64748b',
@@ -364,7 +382,7 @@ function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
         }}>
           {product.description}
         </p>
-        
+
         <div style={{
           display: 'flex',
           gap: '1rem',
@@ -379,7 +397,7 @@ function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
             <strong>Units:</strong> {product.unitsPerPack} {product.unit}
           </div>
         </div>
-        
+
         {/* Stock Warning */}
         {(isLowStock || isOutOfStock) && (
           <div style={{
@@ -399,7 +417,7 @@ function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
           </div>
         )}
       </div>
-      
+
       {/* Price & Actions */}
       <div style={{ marginTop: 'auto' }}>
         <div style={{
@@ -421,7 +439,7 @@ function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
             </div>
           </div>
         </div>
-        
+
         {/* Add to Cart / Quantity Controls */}
         {cartQuantity === 0 ? (
           <button
@@ -471,7 +489,7 @@ function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
             >
               <FiMinus size={18} />
             </button>
-            
+
             <div style={{
               flex: 1,
               textAlign: 'center',
@@ -481,7 +499,7 @@ function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
             }}>
               {cartQuantity} in cart
             </div>
-            
+
             <button
               onClick={() => onUpdateQuantity(cartQuantity + 1)}
               disabled={cartQuantity >= product.stockQuantity}
