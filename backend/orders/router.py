@@ -89,6 +89,7 @@ def create_order(
     # Leon: Get the actual merchant ID from the user's linked merchant account
     # because orders reference Merchant.id, not User.id
     from merchants.models import Merchant
+
     merchant = session.exec(
         select(Merchant).where(Merchant.user_id == current_user.id)
     ).first()
@@ -96,7 +97,7 @@ def create_order(
     if not merchant:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Merchant account not found for this user"
+            detail="Merchant account not found for this user",
         )
 
     merchant_id = merchant.id
@@ -138,8 +139,7 @@ def get_order_by_id(
 
     if not order:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
         )
 
     # merchants can only view their own orders
@@ -152,7 +152,7 @@ def get_order_by_id(
         if not merchant or order["merchant_id"] != str(merchant.id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only view your own orders"
+                detail="You can only view your own orders",
             )
 
     return order

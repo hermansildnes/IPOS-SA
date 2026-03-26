@@ -29,6 +29,7 @@ from catalogue.models import ProductCreate, ProductUpdate
 
 # Shared fixtures
 
+
 @pytest.fixture(name="session")
 def session_fixture():
     """In-memory SQLite database, recreated fresh for every test."""
@@ -72,12 +73,14 @@ def make_product_data(**overrides) -> ProductCreate:
 
 # Helper: create a product directly via the service
 
+
 def create_product_in_db(session: Session, **overrides) -> Product:
     data = make_product_data(**overrides)
     return service.create_product(data, session)
 
 
 # SERVICE-LAYER UNIT TESTS
+
 
 class TestCreateProduct:
     def test_creates_product_successfully(self, session):
@@ -108,6 +111,7 @@ class TestGetProduct:
 
     def test_get_nonexistent_product_raises_404(self, session):
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc:
             service.get_product(uuid4(), session)
         assert exc.value.status_code == 404
@@ -131,6 +135,7 @@ class TestUpdateProduct:
 
     def test_update_nonexistent_product_raises_404(self, session):
         from fastapi import HTTPException
+
         update_data = ProductUpdate(
             product_code="X",
             name="X",
@@ -153,6 +158,7 @@ class TestDeleteProduct:
 
     def test_delete_nonexistent_raises_404(self, session):
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc:
             service.delete_product(uuid4(), session)
         assert exc.value.status_code == 404
@@ -205,6 +211,7 @@ class TestAddStock:
 
     def test_add_stock_nonexistent_product_raises_404(self, session):
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc:
             service.add_stock(uuid4(), 10, uuid4(), session)
         assert exc.value.status_code == 404
@@ -238,9 +245,11 @@ class TestLowStock:
 
 # API / INTEGRATION TESTS  (uses FastAPI TestClient)
 
+
 @pytest.fixture(name="client")
 def client_fixture(session):
     """TestClient wired to the in-memory database."""
+
     def override_session():
         yield session
 
@@ -253,8 +262,10 @@ def client_fixture(session):
 def auth_override(role: UserRole):
     """Return a dependency override that injects a user with the given role."""
     user = make_user(role)
+
     def _override():
         return user
+
     return _override
 
 

@@ -20,7 +20,6 @@ from merchants.service import (
     get_merchant_by_id as get_merchant_by_id_service,
     update_merchant as update_merchant_service,
     calculate_merchant_balance as calculate_merchant_balance_service,
-    get_merchant_orders as get_merchant_orders_service,
     create_invoice as create_invoice_service,
     get_merchant_invoices as get_merchant_invoices_service,
 )
@@ -30,7 +29,7 @@ router = APIRouter()
 
 
 # Leon: Added this endpoint so merchant users can get their own merchant ID.
-# Frontend needs merchant.id (not user.id) to fetch orders since Order.merchant_id 
+# Frontend needs merchant.id (not user.id) to fetch orders since Order.merchant_id
 # references Merchant.id, not User.id. Without this, Orders page shows 0 orders.
 @router.get("/me")
 def get_my_merchant(
@@ -41,19 +40,18 @@ def get_my_merchant(
     if current_user.role != UserRole.MERCHANT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only merchants have merchant accounts"
+            detail="Only merchants have merchant accounts",
         )
-    
+
     merchant = session.exec(
         select(Merchant).where(Merchant.user_id == current_user.id)
     ).first()
-    
+
     if not merchant:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Merchant account not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Merchant account not found"
         )
-    
+
     return merchant
 
 
@@ -66,10 +64,11 @@ def list_merchants(
     if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin or manager access required"
+            detail="Admin or manager access required",
         )
-    
+
     from merchants.service import get_all_merchants
+
     return get_all_merchants(session, account_status)
 
 
@@ -119,18 +118,18 @@ def get_merchant_balance(
     return calculate_merchant_balance_service(session, merchant_id)
 
 
-# Leon: Original endpoint returned wrong data leading to bugs when i ran server. 
+# Leon: Original endpoint returned wrong data leading to bugs when i ran server.
 @router.get("/{merchant_id}/orders")
 def get_merchant_orders(
     merchant_id: UUID,
-    status: str | None = None,  
+    status: str | None = None,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     # Import orders service
     from orders.service import get_orders_by_merchant
     from orders.models import OrderStatus
-    
+
     # Convert string status to enum if provided
     status_enum = None
     if status:
@@ -138,7 +137,7 @@ def get_merchant_orders(
             status_enum = OrderStatus(status)
         except ValueError:
             pass
-    
+
     return get_orders_by_merchant(session, merchant_id, status_enum)
 
 

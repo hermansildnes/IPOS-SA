@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 # --- Turnover Report ---
 
+
 class TurnoverItem(BaseModel):
     product_id: UUID
     product_code: str
@@ -24,6 +25,7 @@ class TurnoverReport(BaseModel):
 
 # --- Merchant Orders Summary ---
 
+
 class OrderSummaryRow(BaseModel):
     order_id: UUID
     order_date: date
@@ -31,8 +33,8 @@ class OrderSummaryRow(BaseModel):
     discount: Decimal
     amount_due: Decimal
     dispatched_date: date | None
-    delivered_date: date | None   # date order reached DELIVERED status
-    payment_date: date | None     # date payment was received (None = Pending)
+    delivered_date: date | None  # date order reached DELIVERED status
+    payment_date: date | None  # date payment was received (None = Pending)
 
 
 class MerchantOrdersSummaryReport(BaseModel):
@@ -56,9 +58,10 @@ class MerchantOrdersSummaryReport(BaseModel):
 
 # --- Merchant Orders Detailed ---
 
+
 class DetailedOrderItem(BaseModel):
     product_id: UUID
-    product_code: str   # Item ID shown in appendix
+    product_code: str  # Item ID shown in appendix
     product_name: str
     quantity: int
     unit_price: Decimal
@@ -90,6 +93,7 @@ class MerchantOrdersDetailedReport(BaseModel):
 
 # --- Low Stock Report ---
 
+
 class LowStockItem(BaseModel):
     product_id: UUID
     product_code: str
@@ -97,7 +101,9 @@ class LowStockItem(BaseModel):
     current_stock: int
     min_stock_level: int
     shortfall: int
-    recommended_min_order: int   # qty to bring stock to restock_percentage above min level
+    recommended_min_order: (
+        int  # qty to bring stock to restock_percentage above min level
+    )
 
 
 class LowStockReport(BaseModel):
@@ -107,6 +113,7 @@ class LowStockReport(BaseModel):
 
 
 # --- Stock Turnover Report ---
+
 
 class StockTurnoverItem(BaseModel):
     product_id: UUID
