@@ -1,12 +1,15 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from auth.models import User, UserRole
 from auth.service import get_current_user
 from core.database import get_session
 from merchants.models import (
+    AccountStatus,
     Merchant,
     MerchantCreate,
     MerchantRead,
@@ -19,10 +22,16 @@ from merchants.service import (
     create_merchant as create_merchant_service,
     get_merchant_by_id as get_merchant_by_id_service,
     update_merchant as update_merchant_service,
+    merchant_to_read,
     calculate_merchant_balance as calculate_merchant_balance_service,
     create_invoice as create_invoice_service,
     get_merchant_invoices as get_merchant_invoices_service,
 )
+
+
+class ReinstateRequest(BaseModel):
+    reason: str
+    director_id: UUID | None = None
 
 
 router = APIRouter()
@@ -52,7 +61,7 @@ def get_my_merchant(
             status_code=status.HTTP_404_NOT_FOUND, detail="Merchant account not found"
         )
 
-    return merchant
+    return merchant_to_read(session, merchant)
 
 
 @router.get("")
@@ -82,7 +91,8 @@ def create_merchant(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
         )
-    return create_merchant_service(session, merchant_in)
+    merchant = create_merchant_service(session, merchant_in)
+    return merchant_to_read(session, merchant)
 
 
 @router.get("/{merchant_id}", response_model=MerchantRead)
@@ -91,7 +101,8 @@ def get_merchant(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    return get_merchant_by_id_service(session, merchant_id)
+    merchant = get_merchant_by_id_service(session, merchant_id)
+    return merchant_to_read(session, merchant)
 
 
 @router.patch("/{merchant_id}", response_model=MerchantRead)
@@ -106,7 +117,54 @@ def update_merchant(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin or manager access required",
         )
-    return update_merchant_service(session, merchant_id, merchant_in)
+    merchant = update_merchant_service(session, merchant_id, merchant_in)
+    return merchant_to_read(session, merchant)
+
+
+@router.post("/{merchant_id}/reinstate", response_model=MerchantRead)
+def reinstate_merchant(
+    merchant_id: UUID,
+    reinstate_in: ReinstateRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    # only director can reinstate a defaulted account - per the brief
+    if current_user.role != UserRole.DIRECTOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the Director of Operations can reinstate defaulted accounts",
+        )
+
+    if not reinstate_in.reason or not reinstate_in.reason.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A reinstatement reason is required",
+        )
+
+    merchant = session.get(Merchant, merchant_id)
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Merchant not found"
+        )
+
+    if merchant.account_status != AccountStatus.IN_DEFAULT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account is not in default - reinstatement not required",
+        )
+
+    # restore to normal and record the audit trail
+    merchant.account_status = AccountStatus.NORMAL
+    merchant.reinstated_by = current_user.id
+    merchant.reinstated_at = datetime.now(timezone.utc)
+    merchant.reinstatement_reason = reinstate_in.reason.strip()
+    merchant.updated_at = datetime.now(timezone.utc)
+
+    session.add(merchant)
+    session.commit()
+    session.refresh(merchant)
+
+    return merchant_to_read(session, merchant)
 
 
 @router.get("/{merchant_id}/balance", response_model=MerchantBalanceRead)

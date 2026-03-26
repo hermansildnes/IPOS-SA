@@ -14,6 +14,8 @@ from reports.models import (
     MerchantOrdersDetailedReport,
     LowStockReport,
     StockTurnoverReport,
+    MerchantInvoicesReport,
+    AllInvoicesReport,
 )
 
 router = APIRouter()
@@ -115,6 +117,49 @@ def get_low_stock_report(
     return service.get_low_stock_report(session)
 
 
+@router.get("/merchant-invoices", response_model=MerchantInvoicesReport)
+def get_merchant_invoices_report(
+    merchant_id: UUID,
+    start_date: date,
+    end_date: date,
+    current_user: User = Depends(require_manager_or_admin),
+    session: Session = Depends(get_session),
+):
+    """
+     Invoices raised against a merchant for a given period.
+    Can be drilled through to view individual invoice details.
+    """
+    if start_date > end_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="start_date must be before or equal to end_date",
+        )
+    try:
+        return service.get_merchant_invoices_report(
+            session, merchant_id, start_date, end_date
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+
+@router.get("/all-invoices", response_model=AllInvoicesReport)
+def get_all_invoices_report(
+    start_date: date,
+    end_date: date,
+    current_user: User = Depends(require_manager_or_admin),
+    session: Session = Depends(get_session),
+):
+    """
+     All invoices raised by InfoPharma Ltd against merchants for a perod
+    """
+    if start_date > end_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="start_date must be before or equal to end_date",
+        )
+    return service.get_all_invoices_report(session, start_date, end_date)
+
+
 @router.get("/stock-turnover", response_model=StockTurnoverReport)
 def get_stock_turnover_report(
     start_date: date,
@@ -123,7 +168,7 @@ def get_stock_turnover_report(
     session: Session = Depends(get_session),
 ):
     """
-    Report vi: Stock turnover — goods sold and newly received within a period.
+    Stock turnover — goods sold and newly received within a period.
     """
     if start_date > end_date:
         raise HTTPException(

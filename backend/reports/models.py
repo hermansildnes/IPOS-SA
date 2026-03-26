@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
-# --- Turnover Report ---
+# Turnover Report 
 
 
 class TurnoverItem(BaseModel):
@@ -23,7 +23,7 @@ class TurnoverReport(BaseModel):
     grand_total_revenue: Decimal
 
 
-# --- Merchant Orders Summary ---
+# Merchant Orders Summary 
 
 
 class OrderSummaryRow(BaseModel):
@@ -56,7 +56,7 @@ class MerchantOrdersSummaryReport(BaseModel):
     dispatched_orders: int
 
 
-# --- Merchant Orders Detailed ---
+# Merchant Orders Detailed 
 
 
 class DetailedOrderItem(BaseModel):
@@ -91,7 +91,7 @@ class MerchantOrdersDetailedReport(BaseModel):
     orders: list[DetailedOrder]
 
 
-# --- Low Stock Report ---
+# Low Stock Report
 
 
 class LowStockItem(BaseModel):
@@ -110,6 +110,55 @@ class LowStockReport(BaseModel):
     generated_at: datetime
     items: list[LowStockItem]
     total_items_below_minimum: int
+
+
+# Merchant Invoices Report
+
+class MerchantInvoiceRow(BaseModel):
+    invoice_id: UUID
+    order_id: UUID
+    invoice_date: date
+    total_amount: Decimal
+    discount_amount: Decimal
+    amount_due: Decimal
+
+
+class MerchantInvoicesReport(BaseModel):
+    merchant_id: UUID
+    company_name: str
+    contact_name: str
+    contact_email: str
+    contact_phone: str | None
+    address: str
+    account_number: str
+    start_date: date
+    end_date: date
+    invoices: list[MerchantInvoiceRow]
+    total_amount_due: Decimal
+    total_invoices: int
+
+
+# All Invoices Report 
+
+
+class AllInvoiceRow(BaseModel):
+    invoice_id: UUID
+    order_id: UUID
+    merchant_id: UUID
+    company_name: str
+    account_number: str
+    invoice_date: date
+    total_amount: Decimal
+    discount_amount: Decimal
+    amount_due: Decimal
+
+
+class AllInvoicesReport(BaseModel):
+    start_date: date
+    end_date: date
+    invoices: list[AllInvoiceRow]
+    grand_total_amount_due: Decimal
+    total_invoices: int
 
 
 # --- Stock Turnover Report ---

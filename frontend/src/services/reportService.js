@@ -18,6 +18,16 @@ const reportService = {
 
   getStockTurnoverReport: (startDate, endDate) =>
     apiClient.get(`/reports/stock-turnover?start_date=${startDate}&end_date=${endDate}`),
+
+  //invoices raised against a specific merchant for a period
+  getMerchantInvoicesReport: (merchantId, startDate, endDate) =>
+    apiClient.get(
+      `/reports/merchant-invoices?merchant_id=${merchantId}&start_date=${startDate}&end_date=${endDate}`
+    ),
+
+  //all invoices raised by InfoPharma for a period
+  getAllInvoicesReport: (startDate, endDate) =>
+    apiClient.get(`/reports/all-invoices?start_date=${startDate}&end_date=${endDate}`),
 };
 
 export default reportService;

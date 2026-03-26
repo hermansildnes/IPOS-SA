@@ -76,6 +76,15 @@ class Payment(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class FlexibleTier(BaseModel):
+    """A single tier in a flexible discount plan.
+    Either bounded tier or above must be set
+    """
+    up_to: Decimal | None = None    # max order value for this tier (None = open-ended)
+    above: Decimal | None = None    # lower bound for the final open-ended tier
+    rate: Decimal                   # discount % to apply
+
+
 class MerchantCreate(BaseModel):
     username: str
     password: str
@@ -88,6 +97,7 @@ class MerchantCreate(BaseModel):
     credit_limit: Decimal
     discount_plan_type: DiscountPlanType
     fixed_discount_rate: Decimal | None = None
+    flexible_thresholds: list[FlexibleTier] | None = None
 
 
 class MerchantUpdate(BaseModel):
@@ -100,6 +110,13 @@ class MerchantUpdate(BaseModel):
     discount_plan_type: DiscountPlanType | None = None
     fixed_discount_rate: Decimal | None = None
     account_status: AccountStatus | None = None
+    flexible_thresholds: list[FlexibleTier] | None = None
+
+
+class TierRead(BaseModel):
+    """A single flexible discount tier as returned in MerchantRead responses."""
+    up_to: Decimal | None   # None = open-ended final tier
+    rate: Decimal
 
 
 class MerchantRead(BaseModel):
@@ -115,6 +132,11 @@ class MerchantRead(BaseModel):
     discount_plan_type: DiscountPlanType
     fixed_discount_rate: Decimal | None
     account_status: AccountStatus
+    status_1st_reminder: str | None = None
+    status_2nd_reminder: str | None = None
+    date_1st_reminder: date | None = None
+    date_2nd_reminder: date | None = None
+    flexible_thresholds: list[TierRead] | None = None
     created_at: datetime
     updated_at: datetime
 

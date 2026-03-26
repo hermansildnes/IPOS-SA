@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from catalogue.models import Product, StockReceipt
 from merchants.models import Merchant, Payment
-from orders.models import Order, OrderItem, OrderStatus
+from orders.models import Invoice, Order, OrderItem, OrderStatus
 
 from reports.models import (
     TurnoverItem,
@@ -21,6 +21,10 @@ from reports.models import (
     LowStockReport,
     StockTurnoverItem,
     StockTurnoverReport,
+    MerchantInvoiceRow,
+    MerchantInvoicesReport,
+    AllInvoiceRow,
+    AllInvoicesReport,
 )
 
 
@@ -271,6 +275,106 @@ def get_low_stock_report(session: Session) -> LowStockReport:
         generated_at=datetime.now(timezone.utc),
         items=low_items,
         total_items_below_minimum=len(low_items),
+    )
+
+
+def get_merchant_invoices_report(
+    session: Session,
+    merchant_id: UUID,
+    start_date: date,
+    end_date: date,
+) -> MerchantInvoicesReport:
+    """
+    Invoices raised against a merchant for a period.
+    Lets staff navigate through invoice details on screen or print them.
+    """
+    merchant = session.get(Merchant, merchant_id)
+    if not merchant:
+        raise ValueError("Merchant not found")
+
+    invoices = session.exec(
+        select(Invoice)
+        .where(
+            Invoice.merchant_id == merchant_id,
+            Invoice.invoice_date >= start_date,
+            Invoice.invoice_date <= end_date,
+        )
+        .order_by(Invoice.invoice_date)
+    ).all()
+
+    rows = []
+    total_due = Decimal("0.00")
+    for inv in invoices:
+        rows.append(
+            MerchantInvoiceRow(
+                invoice_id=inv.id,
+                order_id=inv.order_id,
+                invoice_date=inv.invoice_date,
+                total_amount=inv.total_amount,
+                discount_amount=inv.discount_amount,
+                amount_due=inv.amount_due,
+            )
+        )
+        total_due += inv.amount_due
+
+    return MerchantInvoicesReport(
+        merchant_id=merchant_id,
+        company_name=merchant.company_name,
+        contact_name=merchant.contact_name,
+        contact_email=merchant.contact_email,
+        contact_phone=merchant.contact_phone,
+        address=merchant.address,
+        account_number=merchant.account_number,
+        start_date=start_date,
+        end_date=end_date,
+        invoices=rows,
+        total_amount_due=total_due,
+        total_invoices=len(rows),
+    )
+
+
+def get_all_invoices_report(
+    session: Session,
+    start_date: date,
+    end_date: date,
+) -> AllInvoicesReport:
+    """
+   All invoices raised by InfoPharma for a given period
+    """
+    invoices = session.exec(
+        select(Invoice)
+        .where(
+            Invoice.invoice_date >= start_date,
+            Invoice.invoice_date <= end_date,
+        )
+        .order_by(Invoice.invoice_date)
+    ).all()
+
+    rows = []
+    grand_total = Decimal("0.00")
+    for inv in invoices:
+        merchant = session.get(Merchant, inv.merchant_id)
+        rows.append(
+            AllInvoiceRow(
+                invoice_id=inv.id,
+                order_id=inv.order_id,
+                merchant_id=inv.merchant_id,
+                company_name=merchant.company_name if merchant else "Unknown",
+                account_number=merchant.account_number if merchant else "N/A",
+                invoice_date=inv.invoice_date,
+                total_amount=inv.total_amount,
+                discount_amount=inv.discount_amount,
+                amount_due=inv.amount_due,
+            )
+        )
+        grand_total += inv.amount_due
+
+    return AllInvoicesReport(
+        start_date=start_date,
+        end_date=end_date,
+        invoices=rows,
+        grand_total_amount_due=grand_total,
+        total_invoices=len(rows),
     )
 
 

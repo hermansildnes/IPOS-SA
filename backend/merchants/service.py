@@ -8,10 +8,14 @@ from sqlmodel import Session, select
 from merchants.models import (
     Merchant,
     MerchantCreate,
+    MerchantRead,
     MerchantUpdate,
     MerchantBalanceRead,
     Payment,
     DiscountPlanType,
+    DiscountTier,
+    FlexibleTier,
+    TierRead,
     InvoiceCreate,
 )
 
@@ -85,9 +89,81 @@ def create_merchant(session: Session, merchant_in: MerchantCreate) -> Merchant:
     )
 
     session.add(merchant)
+    session.flush()  # get merchant.id before creating tiers
+
+    # create discount tiers if a flexible plan was specified
+    if merchant_in.discount_plan_type == DiscountPlanType.FLEXIBLE and merchant_in.flexible_thresholds:
+        _upsert_discount_tiers(session, merchant.id, merchant_in.flexible_thresholds)
+
     session.commit()
     session.refresh(merchant)
     return merchant
+
+
+def _upsert_discount_tiers(session, merchant_id, tiers):
+    """Delete existing tiers for this merchant and create fresh ones from the given list"""
+    existing = session.exec(
+        select(DiscountTier).where(DiscountTier.merchant_id == merchant_id)
+    ).all()
+    for t in existing:
+        session.delete(t)
+    session.flush()
+
+    prev_max = Decimal("0")
+    for tier in tiers:
+        if tier.up_to is not None:
+            # bounded tier: from prev_max up to tier.up_to
+            new_tier = DiscountTier(
+                merchant_id=merchant_id,
+                min_value=prev_max,
+                max_value=tier.up_to,
+                discount_rate=tier.rate,
+            )
+            prev_max = tier.up_to
+        else:
+            # open-ended final tier: from above (or prev_max) with no upper limit
+            lower = tier.above if tier.above is not None else prev_max
+            new_tier = DiscountTier(
+                merchant_id=merchant_id,
+                min_value=lower,
+                max_value=None,
+                discount_rate=tier.rate,
+            )
+        session.add(new_tier)
+
+
+def merchant_to_read(session: Session, merchant: Merchant) -> MerchantRead:
+    """Build a MerchantRead DTO that includes flexible tier data if applicable"""
+    tiers = None
+    if merchant.discount_plan_type == DiscountPlanType.FLEXIBLE:
+        db_tiers = session.exec(
+            select(DiscountTier)
+            .where(DiscountTier.merchant_id == merchant.id)
+            .order_by(DiscountTier.min_value)
+        ).all()
+        tiers = [TierRead(up_to=t.max_value, rate=t.discount_rate) for t in db_tiers]
+
+    return MerchantRead(
+        id=merchant.id,
+        user_id=merchant.user_id,
+        account_number=merchant.account_number,
+        company_name=merchant.company_name,
+        contact_name=merchant.contact_name,
+        contact_email=merchant.contact_email,
+        contact_phone=merchant.contact_phone,
+        address=merchant.address,
+        credit_limit=merchant.credit_limit,
+        discount_plan_type=merchant.discount_plan_type,
+        fixed_discount_rate=merchant.fixed_discount_rate,
+        account_status=merchant.account_status,
+        status_1st_reminder=merchant.status_1st_reminder,
+        status_2nd_reminder=merchant.status_2nd_reminder,
+        date_1st_reminder=merchant.date_1st_reminder,
+        date_2nd_reminder=merchant.date_2nd_reminder,
+        flexible_thresholds=tiers,
+        created_at=merchant.created_at,
+        updated_at=merchant.updated_at,
+    )
 
 
 def get_merchant_by_id(session: Session, merchant_id: UUID) -> Merchant:
@@ -134,8 +210,20 @@ def update_merchant(
     if update_data.get("discount_plan_type") == DiscountPlanType.FLEXIBLE:
         update_data["fixed_discount_rate"] = None
 
+    # handle flexible tiers separately - pop them from the dict so setattr doesn't try to assign them
+    new_tiers = update_data.pop("flexible_thresholds", None)
+
     for key, value in update_data.items():
         setattr(merchant, key, value)
+
+    # save new tiers if provided (and plan is flexible now or being set to flexible)
+    current_plan = getattr(merchant, "discount_plan_type", None)
+    is_flexible = (
+        update_data.get("discount_plan_type") == DiscountPlanType.FLEXIBLE
+        or current_plan == DiscountPlanType.FLEXIBLE
+    )
+    if new_tiers is not None and is_flexible:
+        _upsert_discount_tiers(session, merchant.id, new_tiers)
 
     merchant.updated_at = datetime.now(timezone.utc)
 
