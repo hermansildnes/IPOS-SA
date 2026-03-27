@@ -1,6 +1,10 @@
+// implements ISAOrderAPI - wrapper methods for all order-related backend calls
+// placeOrder, trackOrderProgress, queryBalance, viewPreviousOrders, getCatalogue
+
 import { apiClient } from './apiClient';
 
-// Helper to convert backend snake_case to frontend camelCase
+// convert backend snake_case order fields to camelCase for the frontend
+// needed because python uses snake_case but JS convention is camelCase
 function convertOrderFromBackend(order) {
   return {
     id: order.id,
@@ -15,6 +19,7 @@ function convertOrderFromBackend(order) {
     expectedDelivery: order.expected_delivery,
     courier: order.courier,
     courierRef: order.courier_ref,
+    // items only present in detail responses, not list responses
     items: order.items?.map(item => ({
       id: item.id,
       productId: item.product_id,
@@ -27,9 +32,9 @@ function convertOrderFromBackend(order) {
   };
 }
 
-/**
- * Place a new order
- */
+// placeOrder (ISAOrderAPI.placeOrder)
+// submits a new order to the backend with the current cart items
+// returns success + orderId + discount info on success
 export async function placeOrder(items) {
   try {
     const response = await apiClient.post('/orders', { items });
@@ -43,7 +48,7 @@ export async function placeOrder(items) {
       amountDue: response.amount_due,
     };
   } catch (error) {
-    console.error('Place order error:', error);
+    console.error('place order error:', error);
     return {
       success: false,
       error: error.message || 'Failed to place order. Please try again.',
@@ -51,36 +56,34 @@ export async function placeOrder(items) {
   }
 }
 
-/**
- * Track order progress
- */
+// trackOrderProgress (ISAOrderAPI.trackOrderProgress)
+// returns the current status string for a given order id
+// this is what the interface diagram specifies - status only
 export async function trackOrderProgress(orderID) {
   try {
-    const order = await apiClient.get(`/orders/${orderID}`);
-    const converted = convertOrderFromBackend(order);
-    return converted.status;
+    const order = await getOrderDetails(orderID);
+    return order.status;
   } catch (error) {
-    console.error('Failed to track order:', error);
+    console.error('failed to track order:', error);
     return 'unknown';
   }
 }
 
-/**
- * Get full order details by ID
- */
+// getOrderDetails - internal helper used by OrderDetailPage
+// returns the full order object (not just status) so we can show all fields
+// same endpoint as trackOrderProgress but we need the whole thing here
 export async function getOrderDetails(orderID) {
   try {
     const order = await apiClient.get(`/orders/${orderID}`);
     return convertOrderFromBackend(order);
   } catch (error) {
-    console.error('Failed to get order details:', error);
+    console.error('failed to get order details:', error);
     throw error;
   }
 }
 
-/**
- * Query merchant balance
- */
+// queryBalance (ISAOrderAPI.queryBalance)
+// fetches the merchant's current credit limit, outstanding debt and available credit
 export async function queryBalance(merchantID) {
   try {
     const balance = await apiClient.get(`/merchants/${merchantID}/balance`);
@@ -90,14 +93,13 @@ export async function queryBalance(merchantID) {
       availableCredit: parseFloat(balance.available_credit),
     };
   } catch (error) {
-    console.error('Failed to query balance:', error);
+    console.error('failed to query balance:', error);
     throw error;
   }
 }
 
-/**
- * View previous orders for a specific merchant
- */
+// viewPreviousOrders (ISAOrderAPI.viewPreviousOrders)
+// gets the order history for a specific merchant, optionally filtered by status
 export async function viewPreviousOrders(merchantID, status = null) {
   try {
     const params = status ? `?status=${status}` : '';
@@ -114,14 +116,13 @@ export async function viewPreviousOrders(merchantID, status = null) {
       merchantName: order.merchant_name,
     }));
   } catch (error) {
-    console.error('Failed to get merchant orders:', error);
+    console.error('failed to get merchant orders:', error);
     throw error;
   }
 }
 
-/**
- * Get all orders for admin/manager
- */
+// viewAllOrders - admin/manager only, not part of ISAOrderAPI
+// used by the admin orders page to see all orders across all merchants
 export async function viewAllOrders(status = null) {
   try {
     const params = status ? `?status=${status}` : '';
@@ -138,14 +139,13 @@ export async function viewAllOrders(status = null) {
       merchantName: order.merchant_name,
     }));
   } catch (error) {
-    console.error('Failed to get all orders:', error);
+    console.error('failed to get all orders:', error);
     throw error;
   }
 }
 
-/**
- * Get catalogue of all products
- */
+// getCatalogue (ISAOrderAPI.getCatalogue)
+// fetches all products available in the catalogue
 export async function getCatalogue() {
   try {
     const products = await apiClient.get('/catalogue');
@@ -162,14 +162,13 @@ export async function getCatalogue() {
       minStockLevel: product.min_stock_level,
     }));
   } catch (error) {
-    console.error('Failed to get catalogue:', error);
+    console.error('failed to get catalogue:', error);
     return [];
   }
 }
 
-/**
- * Update order status
- */
+// updateOrderStatus - used by admin/manager to move an order through its lifecycle
+// dispatch step requires courier details which get stored on the order
 export async function updateOrderStatus(orderID, status, dispatchDetails = null) {
   try {
     const body = { status };

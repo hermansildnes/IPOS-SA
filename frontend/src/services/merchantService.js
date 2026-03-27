@@ -1,6 +1,6 @@
 
-// Implements ISAMemberAPI interface and merchant management functions
-// Each function corresponds to a specific backend API endpoint
+// implements ISAMemberAPI and merchant management functions
+// each function maps to a specific backend api endpoint
 
 import { apiClient } from './apiClient';
 
@@ -90,11 +90,8 @@ function convertMerchantToBackend(data) {
   };
 }
 
-/**
- * Send commercial application (ISAMemberAPI.sendCommercialApplication)
- * Endpoint: POST /api/commercial-applications
- * Auth: Not required (public endpoint for IPOS-PU integration)
- */
+// sendCommercialApplication (ISAMemberAPI.sendCommercialApplication)
+// public endpoint - no auth needed, used by IPOS-PU to submit membership applications
 export async function sendCommercialApplication(regNumber, type, address, email, details) {
   try {
     await apiClient.post('/commercial-applications', {
@@ -107,16 +104,13 @@ export async function sendCommercialApplication(regNumber, type, address, email,
 
     return true;
   } catch (error) {
-    console.error('Failed to send commercial application:', error);
+    console.error('failed to send commercial application:', error);
     return false;
   }
 }
 
-/**
- * Check commercial application status (ISAMemberAPI.checkCommercialApplication)
- * Endpoint: GET /api/commercial-applications/check?reg_number={regNumber}
- * Auth: Not required (public endpoint)
- */
+// checkCommercialApplication (ISAMemberAPI.checkCommercialApplication)
+// lets applicants check whether their application has been approved yet
 export async function checkCommercialApplication(regNumber) {
   try {
     const result = await apiClient.get(`/commercial-applications/check?reg_number=${regNumber}`);
@@ -124,77 +118,59 @@ export async function checkCommercialApplication(regNumber) {
     // Return true if found and approved
     return result.found && result.status === 'approved';
   } catch (error) {
-    console.error('Failed to check commercial application:', error);
+    console.error('failed to check commercial application:', error);
     return false;
   }
 }
 
-/**
- * Get all merchants
- * Endpoint: GET /api/merchants
- * Auth: Required (admin/manager/director only)
- */
+// get all merchants - admin/manager only
 export async function getAllMerchants() {
   try {
     const merchants = await apiClient.get('/merchants');
     return merchants.map(convertMerchantFromBackend);
   } catch (error) {
-    console.error('Failed to get merchants:', error);
+    console.error('failed to get merchants:', error);
     return [];
   }
 }
 
-/**
- * Get a single merchant by ID
- * Endpoint: GET /api/merchants/{merchant_id}
- * Auth: Required
- */
+// get a single merchant by id - used by AccountDetailPage
 export async function getMerchantById(merchantId) {
   try {
     const merchant = await apiClient.get(`/merchants/${merchantId}`);
     return convertMerchantFromBackend(merchant);
   } catch (error) {
-    console.error('Failed to get merchant:', error);
+    console.error('failed to get merchant:', error);
     return null;
   }
 }
 
-/**
- * Get the merchant account for the currently logged in merchant user
- * Endpoint: GET /api/merchants/me
- * Auth: Required (merchant)
- */
+// get the merchant account for whoever is currently logged in
+// used by /my-account and MerchantDashboard
 export async function getCurrentMerchant() {
   try {
     const merchant = await apiClient.get('/merchants/me');
     return convertMerchantFromBackend(merchant);
   } catch (error) {
-    console.error('Failed to get current merchant:', error);
+    console.error('failed to get current merchant:', error);
     return null;
   }
 }
 
-/**
- * Get merchants filtered by account status
- * Endpoint: GET /api/merchants?status={status}
- * Auth: Required
- */
+// filter merchants by account status (normal/suspended/in_default)
 export async function getMerchantsByStatus(status) {
   try {
     const endpoint = status ? `/merchants?status=${status}` : '/merchants';
     const merchants = await apiClient.get(endpoint);
     return merchants.map(convertMerchantFromBackend);
   } catch (error) {
-    console.error('Failed to get merchants by status:', error);
+    console.error('failed to get merchants by status:', error);
     return [];
   }
 }
 
-/**
- * Create a new merchant account
- * Endpoint: POST /api/merchants
- * Auth: Required (admin only)
- */
+// create a new merchant account - admin only
+// backend creates both the login user and the merchant record in one call
 export async function createMerchant(merchantData) {
   try {
     // now required because backend creates both:
@@ -240,6 +216,15 @@ export async function createMerchant(merchantData) {
       fixed_discount_rate: merchantData.fixedDiscountRate ?? null,
     };
 
+    // include flexible tiers if provided
+    if (merchantData.flexibleThresholds && merchantData.flexibleThresholds.length > 0) {
+      backendData.flexible_thresholds = merchantData.flexibleThresholds.map((tier, i) => {
+        if (tier.limit !== null) return { up_to: tier.limit, rate: tier.rate };
+        const prevLimit = i > 0 ? merchantData.flexibleThresholds[i - 1].limit : 0;
+        return { above: prevLimit, rate: tier.rate };
+      });
+    }
+
     const merchant = await apiClient.post('/merchants', backendData);
 
     return {
@@ -248,7 +233,7 @@ export async function createMerchant(merchantData) {
     };
   } catch (error) {
     // FastAPI validation errors can come back in a few different shapes
-    let errorMessage = 'Failed to create merchant';
+    let errorMessage = 'failed to create merchant';
 
     if (Array.isArray(error?.details)) {
       errorMessage = error.details
@@ -271,11 +256,8 @@ export async function createMerchant(merchantData) {
   }
 }
 
-/**
- * Update an existing merchant
- * Endpoint: PATCH /api/merchants/{merchant_id}
- * Auth: Required (admin/manager)
- */
+// update an existing merchant - admin/manager only
+// only sends fields that were actually changed, everything else stays the same
 export async function updateMerchant(merchantId, updates) {
   try {
     const backendUpdates = {};
@@ -289,6 +271,23 @@ export async function updateMerchant(merchantId, updates) {
     if (updates.creditLimit !== undefined) backendUpdates.credit_limit = updates.creditLimit;
     if (updates.discountPlanType !== undefined) backendUpdates.discount_plan_type = updates.discountPlanType;
     if (updates.fixedDiscountRate !== undefined) backendUpdates.fixed_discount_rate = updates.fixedDiscountRate;
+
+    // managers and admins can change account status (normal/suspended/in_default)
+    if (updates.accountStatus !== undefined) backendUpdates.account_status = updates.accountStatus;
+
+    // convert tiered thresholds from frontend format to backend format
+    // each tier is { limit: number|null, rate: number }
+    // limit=null means it's the open-ended "above" tier at the end
+    if (updates.flexibleThresholds !== undefined && updates.flexibleThresholds !== null) {
+      backendUpdates.flexible_thresholds = updates.flexibleThresholds.map((tier, i) => {
+        if (tier.limit !== null) {
+          return { up_to: tier.limit, rate: tier.rate };
+        }
+        // last tier - use the previous tier's limit as the lower bound
+        const prevLimit = i > 0 ? updates.flexibleThresholds[i - 1].limit : 0;
+        return { above: prevLimit, rate: tier.rate };
+      });
+    }
 
     const merchant = await apiClient.patch(`/merchants/${merchantId}`, backendUpdates);
 
@@ -304,11 +303,7 @@ export async function updateMerchant(merchantId, updates) {
   }
 }
 
-/**
- * Get merchant's current balance/debt
- * Endpoint: GET /api/merchants/{merchant_id}/balance
- * Auth: Required
- */
+// get a merchant's current balance - credit limit, outstanding debt and available credit
 export async function getMerchantBalance(merchantId) {
   try {
     const balance = await apiClient.get(`/merchants/${merchantId}/balance`);
@@ -318,7 +313,7 @@ export async function getMerchantBalance(merchantId) {
       availableCredit: parseFloat(balance.available_credit),
     };
   } catch (error) {
-    console.error('Failed to get merchant balance:', error);
+    console.error('failed to get merchant balance:', error);
     return {
       creditLimit: 0,
       currentDebt: 0,
@@ -327,11 +322,8 @@ export async function getMerchantBalance(merchantId) {
   }
 }
 
-/**
- * Reinstate a merchant account from 'in_default' status
- * Endpoint: POST /api/merchants/{merchant_id}/reinstate
- * Auth: Required (director only)
- */
+// reinstate a defaulted merchant account - director only
+// requires a reason which gets stored in the audit trail on the merchant record
 export async function reinstateAccount(merchantId, reason, directorId) {
   try {
     if (!reason || !reason.trim()) {

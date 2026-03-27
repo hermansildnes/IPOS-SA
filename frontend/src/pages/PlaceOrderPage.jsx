@@ -80,15 +80,12 @@ function PlaceOrderPage() {
     setCart(cart.filter(item => item.product.id !== productId));
   };
 
-  // Calculate totals
+  // calculate the order subtotal from what's in the cart
+  // the actual discount is applied by the backend based on the merchant's plan
+  // so we only show the subtotal here - the final amount is shown after placing
   const subtotal = cart.reduce((sum, item) =>
     sum + (item.product.packageCost * item.quantity), 0
   );
-
-  // For now, assume 5% discount
-  const discountPercentage = 5;
-  const discountAmount = subtotal * (discountPercentage / 100);
-  const total = subtotal - discountAmount;
 
   // Submit order
   const handleSubmit = async () => {
@@ -110,13 +107,18 @@ function PlaceOrderPage() {
     const result = await placeOrder(items);
 
     if (result.success) {
-      // Clear cart state and this user's saved cart
+      // clear cart state and this user's saved cart on success
       setCart([]);
       localStorage.removeItem(cartStorageKey);
 
+      // show the actual discount the backend calculated
+      const discountInfo = result.discount > 0
+        ? ` Discount applied: £${parseFloat(result.discount).toFixed(2)}.`
+        : '';
+
       setMessage({
         type: 'success',
-        text: `Order created successfully! Order ID: ${result.orderId.substring(0, 8)}...`
+        text: `Order placed! ID: ${result.orderId.substring(0, 8).toUpperCase()}.${discountInfo}`,
       });
 
       setTimeout(() => {
@@ -281,33 +283,29 @@ function PlaceOrderPage() {
                 Order Summary
               </h3>
 
-              {/* Summary Rows */}
+              {/* order cost summary */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                  <span style={{ color: '#64748b' }}>Subtotal</span>
+                  <span style={{ color: '#64748b' }}>Order Subtotal</span>
                   <span style={{ fontWeight: '600', color: '#0f172a' }}>£{subtotal.toFixed(2)}</span>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                  <span style={{ color: '#64748b' }}>Discount ({discountPercentage}%)</span>
-                  <span style={{ fontWeight: '600', color: '#10b981' }}>-£{discountAmount.toFixed(2)}</span>
+                  <span style={{ color: '#64748b' }}>Discount</span>
+                  <span style={{ fontWeight: '600', color: '#94a3b8' }}>Calculated at checkout</span>
                 </div>
 
-                <div style={{
-                  height: '1px',
-                  background: '#e2e8f0',
-                  margin: '0.5rem 0',
-                }}></div>
+                <div style={{ height: '1px', background: '#e2e8f0', margin: '0.25rem 0' }} />
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem' }}>
-                  <span style={{ fontWeight: '600', color: '#0f172a' }}>Total</span>
-                  <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '1.25rem' }}>
-                    £{total.toFixed(2)}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                  <span style={{ fontWeight: '600', color: '#0f172a' }}>Estimated Total</span>
+                  <span style={{ fontWeight: '700', color: '#0f172a', fontSize: '1.125rem' }}>
+                    ~£{subtotal.toFixed(2)}
                   </span>
                 </div>
               </div>
 
-              {/* Info Box */}
+              {/* info box explaining that the discount is applied server-side */}
               <div style={{
                 background: '#eff6ff',
                 border: '1px solid #bfdbfe',
@@ -318,7 +316,8 @@ function PlaceOrderPage() {
                 color: '#1e40af',
                 lineHeight: '1.5',
               }}>
-                <strong>Note:</strong> Your account discount has been applied. Final discount amount may vary based on your monthly order total (flexible plans only).
+                Your merchant discount will be applied automatically when the order is placed.
+                The final amount depends on your discount plan and monthly order total.
               </div>
 
               {/* Place Order Button */}

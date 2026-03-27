@@ -1,126 +1,105 @@
-// API Client - handles all HTTP requests to the backend
-// All service files use this client instead of calling fetch directly
+// base HTTP client used by all service files
+// every request goes through here so auth headers are always included
 
 const API_BASE_URL = 'http://127.0.0.1:8000/api';
 
-// Helper function to get the auth token from localStorage
-// The token is stored when the user logs in
-
+// helper to get the auth token from localStorage
+// the token is stored when the user logs in and cleared on logout
 function getAuthToken() {
   return localStorage.getItem('access_token');
 }
 
-// Helper function to save the auth token after login
+// stores the jwt token in localStorage after a successful login
 function setAuthToken(token) {
   localStorage.setItem('access_token', token);
 }
 
-// Helper function to remove the auth token on logout
+// removes the token - called on logout and when the backend returns 401
 function clearAuthToken() {
   localStorage.removeItem('access_token');
 }
 
-// Main API client class
-// Provides methods for GET, POST, PATCH, PUT, DELETE requests
 class ApiClient {
-  
-  // Generic request method - all other methods use this internally
-  // Handles auth headers, JSON conversion and error responses
+
+  // builds and sends the request, handles auth headers and error responses
   async request(endpoint, options = {}) {
-    // Build the full URL by combining base URL with endpoint
     const url = `${API_BASE_URL}${endpoint}`;
-    
-    // Get the auth token if it exists
     const token = getAuthToken();
-    
+
+    // always send json, merge in any extra headers from the caller
     const headers = {
       'Content-Type': 'application/json',
       ...options.headers,
     };
-    
-    // If we have a token, add it to the auth header
+
+    // attach the bearer token if we have one - backend needs it for protected routes
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
-    
-    // Make the actual HTTP request
+
     const response = await fetch(url, {
       ...options,
       headers,
     });
-    
-    // If response is not ok (status 400-599), throw an error
+
     if (!response.ok) {
-      // If 401 Unauthorised, clear the token
+      // 401 = token expired or invalid, clear it so user gets redirected to login
       if (response.status === 401) {
         clearAuthToken();
       }
-      
+
+      // try to pull the detail message out of the response body, fall back to status text
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.detail || `HTTP ${response.status}: ${response.statusText}`;
       throw new Error(errorMessage);
     }
-    
-    // If response is No Content, return null
+
+    // 204 = success with no body, return null so callers don't try to parse it
     if (response.status === 204) {
       return null;
     }
-    
-    // Parse and return the JSON response
+
     return response.json();
   }
-  
-  // GET request wrapper
-  // Used for fetching data from the server
-  // Example: apiClient.get('/merchants/123')
-  async get(endpoint) {
-    return this.request(endpoint, {
-      method: 'GET',
-    });
-  }
-  
-  // POST request wrapper
-  // Used for creating new resources
 
+  // shorthand methods so service files don't have to pass method/body manually
+
+  // read data - no body needed
+  async get(endpoint) {
+    return this.request(endpoint, { method: 'GET' });
+  }
+
+  // create a new resource
   async post(endpoint, data) {
     return this.request(endpoint, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
-  
-  // PATCH request wrapper
-  // Used for partially updating existing resources
 
+  // partial update - only sends the fields that changed
   async patch(endpoint, data) {
     return this.request(endpoint, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
-  
-  // PUT request wrapper
-  // Used for fully replacing existing resources
 
+  // full replace - sends the entire object
   async put(endpoint, data) {
     return this.request(endpoint, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
-  
-  // DELETE request wrapper
-  // Used for deleting resources
 
+  // remove a resource
   async delete(endpoint) {
-    return this.request(endpoint, {
-      method: 'DELETE',
-    });
+    return this.request(endpoint, { method: 'DELETE' });
   }
 }
 
-// Create a single instance of the API client
-// Export this instance so all service files use the same client
+// single shared instance used by all service files
 const apiClient = new ApiClient();
 
 // Export the client and auth helper functions

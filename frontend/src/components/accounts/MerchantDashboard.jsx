@@ -6,17 +6,27 @@ import {
   FiClock,
   FiTruck,
   FiCreditCard,
+  FiBell,
+  FiLock,
 } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { queryBalance, viewPreviousOrders } from '../../services/orderService';
 import { apiClient } from '../../services/apiClient';
 
 // maps order status to a colour and icon for the status badge
-const STATUS_STYLES = {
-  DELIVERED: { color: '#16a34a', bg: '#dcfce7', icon: FiCheckCircle },
-  DISPATCHED: { color: '#2563eb', bg: '#dbeafe', icon: FiTruck },
-  PROCESSING: { color: '#d97706', bg: '#fef3c7', icon: FiClock },
-  ACCEPTED: { color: '#7c3aed', bg: '#ede9fe', icon: FiCheckCircle },
+// backend sends lowercase strings so keys must match exactly
+const ORDER_STATUS_STYLES = {
+  delivered: { color: '#16a34a', bg: '#dcfce7', icon: FiCheckCircle },
+  dispatched: { color: '#2563eb', bg: '#dbeafe', icon: FiTruck },
+  processing: { color: '#d97706', bg: '#fef3c7', icon: FiClock },
+  accepted: { color: '#7c3aed', bg: '#ede9fe', icon: FiCheckCircle },
+};
+
+// account status styles for the badge shown in the header
+const ACCOUNT_STATUS_STYLES = {
+  normal: { bg: '#dcfce7', color: '#166534', label: 'Active' },
+  suspended: { bg: '#fef3c7', color: '#92400e', label: 'Suspended' },
+  in_default: { bg: '#fee2e2', color: '#dc2626', label: 'In Default' },
 };
 
 function MerchantDashboard() {
@@ -29,13 +39,13 @@ function MerchantDashboard() {
       try {
         setLoading(true);
 
-        // Get merchant ID
+        // get merchant details including account status and payment reminder fields
         const merchant = await apiClient.get('/merchants/me');
-        
-        // Get balance info
+
+        // get balance info
         const balance = await queryBalance(merchant.id);
-        
-        // Get recent orders (last 3)
+
+        // get recent orders (last 3)
         const allOrders = await viewPreviousOrders(merchant.id);
         const recentOrders = allOrders.slice(0, 3);
 
@@ -43,6 +53,13 @@ function MerchantDashboard() {
           creditLimit: balance.creditLimit,
           currentDebt: balance.currentDebt,
           recentOrders: recentOrders,
+          // account status stuff
+          accountStatus: merchant.account_status,
+          // reminder flags from the merchant record
+          status1stReminder: merchant.status_1st_reminder,
+          status2ndReminder: merchant.status_2nd_reminder,
+          date1stReminder: merchant.date_1st_reminder,
+          date2ndReminder: merchant.date_2nd_reminder,
         });
       } catch (error) {
         console.error('Failed to load dashboard:', error);
@@ -58,11 +75,11 @@ function MerchantDashboard() {
 
   if (loading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        minHeight: '400px' 
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '400px'
       }}>
         <div style={{
           width: '48px',
@@ -90,23 +107,96 @@ function MerchantDashboard() {
     );
   }
 
-  const { creditLimit, currentDebt, recentOrders } = merchantData;
+  const {
+    creditLimit,
+    currentDebt,
+    recentOrders,
+    accountStatus,
+    status1stReminder,
+    status2ndReminder,
+    date1stReminder,
+    date2ndReminder,
+  } = merchantData;
 
   // available credit = total limit minus what's already owed
   const availableCredit = creditLimit - currentDebt;
 
   // warn the merchant if they've used more than 90% of their credit
-  // maintained consistency with user stories - the SA-MER-03 acceptance criteria
-  const isNearLimit = currentDebt / creditLimit >= 0.9;
+  const isNearLimit = creditLimit > 0 && currentDebt / creditLimit >= 0.9;
 
-  // Shows what percentage of credit has been used as a progress bar
-  const debtPercentage = Math.min((currentDebt / creditLimit) * 100, 100);
+  // shows what percentage of credit has been used as a progress bar
+  const debtPercentage = creditLimit > 0 ? Math.min((currentDebt / creditLimit) * 100, 100) : 0;
+
+  // payment is overdue if either reminder flag is 'due'
+  const hasPaymentReminder = status1stReminder === 'due' || status2ndReminder === 'due';
+  const isSecondReminder = status2ndReminder === 'due';
+
+  // account is suspended or defaulted
+  const isSuspended = accountStatus === 'suspended';
+  const isInDefault = accountStatus === 'in_default';
+  const isRestricted = isSuspended || isInDefault;
+
+  const accountStatusStyle = ACCOUNT_STATUS_STYLES[accountStatus] || ACCOUNT_STATUS_STYLES.normal;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-      {/* Warning banner - only shows when merchant is near their credit limit */}
-      {isNearLimit && (
+      {/* Account suspension / default banner - shown when placing orders is blocked */}
+      {isRestricted && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '0.75rem',
+          background: isInDefault ? '#fee2e2' : '#fef3c7',
+          border: `1px solid ${isInDefault ? '#fecaca' : '#fcd34d'}`,
+          borderRadius: '0.75rem',
+          padding: '1rem 1.25rem',
+          color: isInDefault ? '#dc2626' : '#92400e',
+        }}>
+          <FiLock size={20} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
+          <div>
+            <p style={{ fontWeight: '700', fontSize: '0.875rem' }}>
+              {isInDefault ? 'Account In Default' : 'Account Suspended'}
+            </p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.2rem', lineHeight: '1.5' }}>
+              {isInDefault
+                ? 'Your account is in default. New orders cannot be placed. Please contact InfoPharma to resolve this.'
+                : 'Your account is suspended due to a payment overdue by more than 15 days. Orders are blocked until payment is received.'
+              }
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Payment reminder banner - shown when a payment reminder has been triggered */}
+      {hasPaymentReminder && !isRestricted && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '0.75rem',
+          background: '#fffbeb',
+          border: '1px solid #f59e0b',
+          borderRadius: '0.75rem',
+          padding: '1rem 1.25rem',
+          color: '#92400e',
+        }}>
+          <FiBell size={20} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
+          <div>
+            <p style={{ fontWeight: '700', fontSize: '0.875rem' }}>
+              {isSecondReminder ? 'Payment Overdue — Final Reminder' : 'Payment Reminder'}
+            </p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.2rem', lineHeight: '1.5' }}>
+              {isSecondReminder
+                ? `Your account has an overdue payment (since ${date2ndReminder || 'your last billing date'}). Your account may be suspended soon if payment is not received.`
+                : `A payment is due on your account (since ${date1stReminder || 'your billing date'}). Please arrange a bank transfer to InfoPharma using the IBAN provided.`
+              }
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Credit limit warning - only shows when merchant is near their limit */}
+      {isNearLimit && !isRestricted && (
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -130,13 +220,13 @@ function MerchantDashboard() {
         </div>
       )}
 
-      {/* credit overview cards - matches SA-MER-03 requirements */}
+      {/* Account status and credit overview cards */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
         gap: '1rem',
       }}>
-        {/* Total credit limit */}
+        {/* Account status card */}
         <div style={{
           background: 'white',
           borderRadius: '0.75rem',
@@ -150,14 +240,22 @@ function MerchantDashboard() {
             gap: '0.5rem',
             marginBottom: '0.75rem',
           }}>
-            <FiCreditCard size={16} style={{ color: '#6366f1' }} />
+            <FiCheckCircle size={16} style={{ color: '#6366f1' }} />
             <p style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '500' }}>
-              Credit Limit
+              Account Status
             </p>
           </div>
-          <p style={{ fontSize: '1.5rem', fontWeight: '700', color: '#0f172a' }}>
-            £{creditLimit.toLocaleString()}
-          </p>
+          <span style={{
+            display: 'inline-block',
+            background: accountStatusStyle.bg,
+            color: accountStatusStyle.color,
+            padding: '0.35rem 0.875rem',
+            borderRadius: '9999px',
+            fontSize: '0.875rem',
+            fontWeight: '700',
+          }}>
+            {accountStatusStyle.label}
+          </span>
         </div>
 
         {/* Current outstanding debt */}
@@ -198,7 +296,7 @@ function MerchantDashboard() {
             gap: '0.5rem',
             marginBottom: '0.75rem',
           }}>
-            <FiCheckCircle size={16} style={{ color: '#16a34a' }} />
+            <FiCreditCard size={16} style={{ color: '#16a34a' }} />
             <p style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '500' }}>
               Available Credit
             </p>
@@ -206,7 +304,7 @@ function MerchantDashboard() {
           <p style={{
             fontSize: '1.5rem',
             fontWeight: '700',
-            // Red text when almost at limit, green when plenty available
+            // red when almost at limit, green when plenty available
             color: isNearLimit ? '#dc2626' : '#16a34a',
           }}>
             £{availableCredit.toLocaleString()}
@@ -227,13 +325,13 @@ function MerchantDashboard() {
           marginBottom: '0.5rem',
         }}>
           <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#374151' }}>
-            Credit Usage
+            Credit Usage (Limit: £{creditLimit.toLocaleString()})
           </p>
           <p style={{ fontSize: '0.875rem', color: '#64748b' }}>
             {debtPercentage.toFixed(0)}% used
           </p>
         </div>
-        {/* Grey track behind the coloured progress bar */}
+        {/* grey track behind the coloured progress bar */}
         <div style={{
           background: '#f1f5f9',
           borderRadius: '9999px',
@@ -275,8 +373,7 @@ function MerchantDashboard() {
               Recent Orders
             </h3>
           </div>
-          {/* This will link to the full orders page eventually */}
-          <button 
+          <button
             onClick={() => window.location.href = '/orders'}
             style={{
               background: 'none',
@@ -299,10 +396,10 @@ function MerchantDashboard() {
             </div>
           ) : (
             recentOrders.map((order, index) => {
-              const statusStyle = STATUS_STYLES[order.status] || STATUS_STYLES.PROCESSING;
+              // backend sends lowercase status - map to style object
+              const statusStyle = ORDER_STATUS_STYLES[order.status] || ORDER_STATUS_STYLES.accepted;
               const StatusIcon = statusStyle.icon;
 
-              // Format date
               const orderDate = new Date(order.orderDate);
               const formattedDate = orderDate.toLocaleDateString('en-GB', {
                 day: '2-digit',
@@ -317,12 +414,12 @@ function MerchantDashboard() {
                     display: 'flex',
                     alignItems: 'center',
                     padding: '1rem 1.25rem',
-                    // Alternate row background for readability
+                    // alternate row background for readability
                     background: index % 2 === 0 ? 'white' : '#fafafa',
                     borderBottom: index < recentOrders.length - 1 ? '1px solid #f1f5f9' : 'none',
                   }}
                 >
-                  {/* Order ID and date */}
+                  {/* order ID and date */}
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.875rem' }}>
                       #{order.id.substring(0, 8).toUpperCase()}
@@ -332,14 +429,14 @@ function MerchantDashboard() {
                     </p>
                   </div>
 
-                  {/* Order total */}
+                  {/* order total */}
                   <div style={{ flex: 1 }}>
                     <p style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.875rem' }}>
                       £{order.amountDue.toFixed(2)}
                     </p>
                   </div>
 
-                  {/* Status badge with colour and icon */}
+                  {/* status badge with colour and icon */}
                   <div style={{
                     display: 'inline-flex',
                     alignItems: 'center',

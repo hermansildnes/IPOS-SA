@@ -21,38 +21,45 @@ import {
   FiMapPin,
   FiCreditCard,
   FiPercent,
+  FiPlus,
+  FiTrash2,
 } from 'react-icons/fi';
 
+// helper to convert backend threshold format to the simpler frontend format
+// backend gives { up_to: X, rate: Y } or { above: X, rate: Y }
+// we use { limit: X|null, rate: Y } where null = open-ended last tier
+function parseThresholdsFromBackend(raw) {
+  if (!raw || !Array.isArray(raw)) return [];
+  return raw.map((t) => ({
+    limit: t.upTo ?? t.up_to ?? null,
+    rate: t.rate ?? 0,
+  }));
+}
+
+// default tiers to show when switching to flexible plan for the first time
+const DEFAULT_FLEXIBLE_TIERS = [
+  { limit: 1000, rate: 5 },
+  { limit: null, rate: 10 },
+];
+
 function AccountDetailPage() {
-  // useParams grabs the merchant ID from the URL e.g. /accounts/:id
+  // id comes from the URL when management roles view /accounts/:id
+  // no id means we're on /my-account (merchant self-service page)
   const { id } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // merchants use this same page too, but through /my-account with no id param
   const isMerchantSelfView = user?.role === ROLES.MERCHANT && !id;
 
-  // loading is true while we fetch the merchant data from the backend
   const [loading, setLoading] = useState(true);
-
-  // merchant = the currently loaded merchant account object
   const [merchant, setMerchant] = useState(null);
-
-  // Track whether we're in edit mode or view mode
   const [isEditing, setIsEditing] = useState(false);
-
-  // Track whether the reinstate modal is open
+  const [isSaving, setIsSaving] = useState(false);
   const [showReinstateModal, setShowReinstateModal] = useState(false);
-
-  // The reason the director gives when reinstating a defaulted account
-  // Required field as per SA-DIR-01 acceptance criteria
   const [reinstateReason, setReinstateReason] = useState('');
-
-  // Any error or success messages to show the user
   const [message, setMessage] = useState(null);
 
-  // formData holds the values being edited
-  // Initialised after the merchant data has been loaded
+  // formData mirrors the editable fields on the merchant account
   const [formData, setFormData] = useState({
     companyName: '',
     contactName: '',
@@ -62,33 +69,39 @@ function AccountDetailPage() {
     creditLimit: 0,
     discountPlanType: DISCOUNT_TYPES.FIXED,
     fixedDiscountRate: 0,
+    flexibleThresholds: DEFAULT_FLEXIBLE_TIERS,
+    accountStatus: ACCOUNT_STATUS.NORMAL,
   });
 
-  // Load the merchant when the page opens
-  // If this is /my-account, fetch the current logged in merchant
-  // otherwise fetch the merchant using the id from the URL
+  // validation errors for the flexible tier editor
+  const [tierErrors, setTierErrors] = useState('');
+
   useEffect(() => {
     async function loadMerchant() {
       try {
         setLoading(true);
 
-        const loadedMerchant = isMerchantSelfView
+        const loaded = isMerchantSelfView
           ? await getCurrentMerchant()
           : await getMerchantById(id);
 
-        setMerchant(loadedMerchant);
+        setMerchant(loaded);
 
-        // once loaded, sync the edit form to the merchant's current values
-        if (loadedMerchant) {
+        if (loaded) {
+          const existingTiers = parseThresholdsFromBackend(loaded.flexibleThresholds);
           setFormData({
-            companyName: loadedMerchant.companyName || '',
-            contactName: loadedMerchant.contactName || '',
-            contactEmail: loadedMerchant.contactEmail || '',
-            contactPhone: loadedMerchant.contactPhone || '',
-            address: loadedMerchant.address || '',
-            creditLimit: loadedMerchant.creditLimit || 0,
-            discountPlanType: loadedMerchant.discountPlanType || DISCOUNT_TYPES.FIXED,
-            fixedDiscountRate: loadedMerchant.fixedDiscountRate || 0,
+            companyName: loaded.companyName || '',
+            contactName: loaded.contactName || '',
+            contactEmail: loaded.contactEmail || '',
+            contactPhone: loaded.contactPhone || '',
+            address: loaded.address || '',
+            creditLimit: loaded.creditLimit || 0,
+            discountPlanType: loaded.discountPlanType || DISCOUNT_TYPES.FIXED,
+            fixedDiscountRate: loaded.fixedDiscountRate || 0,
+            flexibleThresholds: existingTiers.length > 0
+              ? existingTiers
+              : DEFAULT_FLEXIBLE_TIERS,
+            accountStatus: loaded.accountStatus || ACCOUNT_STATUS.NORMAL,
           });
         }
       } finally {
@@ -99,7 +112,7 @@ function AccountDetailPage() {
     loadMerchant();
   }, [id, isMerchantSelfView]);
 
-  // Show a loading state while we fetch the merchant account
+  // loading spinner - shown while fetching account
   if (loading) {
     return (
       <div style={{
@@ -120,16 +133,11 @@ function AccountDetailPage() {
           }} />
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Loading account...</p>
         </div>
-        <style>{`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
-  // If no merchant found, show a not found message
   if (!merchant) {
     return (
       <div style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
@@ -155,26 +163,88 @@ function AccountDetailPage() {
   const statusStyle = STATUS_STYLES[merchant.status] || STATUS_STYLES.normal;
   const availableCredit = (merchant.creditLimit || 0) - (merchant.currentDebt || 0);
 
-  // Checks if the current user can edit this merchant's details
+  // only admins and managers can edit merchant details
   const canEdit = user?.role === ROLES.ADMIN || user?.role === ROLES.MANAGER;
 
-  // Only the director can reinstate defaulted accounts (SA-DIR-01)
+  // only the director can reinstate a defaulted account
   const canReinstate =
-    user?.role === ROLES.DIRECTOR &&
-    merchant.status === ACCOUNT_STATUS.IN_DEFAULT;
+    user?.role === ROLES.DIRECTOR && merchant.status === ACCOUNT_STATUS.IN_DEFAULT;
 
-  // merchants go back to dashboard, management roles go back to accounts list
   const backPath = user?.role === ROLES.MERCHANT ? '/dashboard' : '/accounts';
 
-  // Saves the edited form data back to the service layer
+  // --- flexible tier management ---
+
+  // add a new tier above the final open-ended tier
+  const addTier = () => {
+    const tiers = [...formData.flexibleThresholds];
+    // insert a new bounded tier before the last open-ended one
+    const lastBounded = tiers.filter((t) => t.limit !== null);
+    const lastLimit = lastBounded.length > 0 ? lastBounded[lastBounded.length - 1].limit : 0;
+    const openTierIndex = tiers.findIndex((t) => t.limit === null);
+    const newTier = { limit: lastLimit + 1000, rate: 0 };
+    if (openTierIndex >= 0) {
+      tiers.splice(openTierIndex, 0, newTier);
+    } else {
+      tiers.push(newTier);
+    }
+    setFormData({ ...formData, flexibleThresholds: tiers });
+    setTierErrors('');
+  };
+
+  // remove a specific tier (can't remove the last open-ended tier)
+  const removeTier = (index) => {
+    const tiers = [...formData.flexibleThresholds];
+    tiers.splice(index, 1);
+    setFormData({ ...formData, flexibleThresholds: tiers });
+    setTierErrors('');
+  };
+
+  // update a single tier field
+  const updateTier = (index, field, value) => {
+    const tiers = formData.flexibleThresholds.map((t, i) =>
+      i === index ? { ...t, [field]: value } : t
+    );
+    setFormData({ ...formData, flexibleThresholds: tiers });
+    setTierErrors('');
+  };
+
+  // validate that tiers are in strict ascending order with no gaps or overlaps
+  const validateTiers = (tiers) => {
+    const bounded = tiers.filter((t) => t.limit !== null);
+    for (let i = 1; i < bounded.length; i++) {
+      if (bounded[i].limit <= bounded[i - 1].limit) {
+        return 'Tier thresholds must be in ascending order with no duplicates';
+      }
+    }
+    for (const t of tiers) {
+      if (t.rate < 0 || t.rate > 100) {
+        return 'Discount rates must be between 0 and 100';
+      }
+    }
+    return null;
+  };
+
+  // save edits back to the backend
   const handleSave = async () => {
+    // validate flexible tiers before saving
+    if (formData.discountPlanType === DISCOUNT_TYPES.FLEXIBLE) {
+      const err = validateTiers(formData.flexibleThresholds);
+      if (err) {
+        setTierErrors(err);
+        return;
+      }
+    }
+
+    setIsSaving(true);
+    setMessage(null);
+
     const result = await updateMerchant(merchant.id, formData);
 
-    if (result.success) {
-      // Update local state so the page reflects the changes immediately
-      setMerchant(result.merchant);
+    setIsSaving(false);
 
-      // re-sync the form in case the backend normalised anything
+    if (result.success) {
+      setMerchant(result.merchant);
+      const existingTiers = parseThresholdsFromBackend(result.merchant.flexibleThresholds);
       setFormData({
         companyName: result.merchant.companyName || '',
         contactName: result.merchant.contactName || '',
@@ -184,20 +254,23 @@ function AccountDetailPage() {
         creditLimit: result.merchant.creditLimit || 0,
         discountPlanType: result.merchant.discountPlanType || DISCOUNT_TYPES.FIXED,
         fixedDiscountRate: result.merchant.fixedDiscountRate || 0,
+        flexibleThresholds: existingTiers.length > 0
+          ? existingTiers
+          : DEFAULT_FLEXIBLE_TIERS,
+        accountStatus: result.merchant.accountStatus || ACCOUNT_STATUS.NORMAL,
       });
-
       setIsEditing(false);
+      setTierErrors('');
       setMessage({ type: 'success', text: 'Account updated successfully' });
-
-      // Clear the success message after 3 seconds
       setTimeout(() => setMessage(null), 3000);
     } else {
-      setMessage({ type: 'error', text: result.error });
+      setMessage({ type: 'error', text: result.error || 'Failed to save changes' });
     }
   };
 
-  // Cancels editing and resets the form back to original values
+  // discard edits and return to view mode
   const handleCancel = () => {
+    const existingTiers = parseThresholdsFromBackend(merchant.flexibleThresholds);
     setFormData({
       companyName: merchant.companyName || '',
       contactName: merchant.contactName || '',
@@ -207,40 +280,54 @@ function AccountDetailPage() {
       creditLimit: merchant.creditLimit || 0,
       discountPlanType: merchant.discountPlanType || DISCOUNT_TYPES.FIXED,
       fixedDiscountRate: merchant.fixedDiscountRate || 0,
+      flexibleThresholds: existingTiers.length > 0
+        ? existingTiers
+        : DEFAULT_FLEXIBLE_TIERS,
+      accountStatus: merchant.accountStatus || ACCOUNT_STATUS.NORMAL,
     });
     setIsEditing(false);
+    setTierErrors('');
   };
 
-  // Handles the director reinstating a defaulted account (SA-DIR-01)
+  // director reinstating a defaulted account - requires a reason for the audit trail
   const handleReinstate = async () => {
-    const result = await reinstateAccount(
-      merchant.id,
-      reinstateReason,
-      user?.id
-    );
+    const result = await reinstateAccount(merchant.id, reinstateReason, user?.id);
 
     if (result.success) {
-      // use returned merchant if available, otherwise refresh from backend
       if (result.merchant) {
         setMerchant(result.merchant);
       } else {
-        const refreshedMerchant = await getMerchantById(merchant.id);
-        setMerchant(refreshedMerchant);
+        const refreshed = await getMerchantById(merchant.id);
+        setMerchant(refreshed);
       }
-
       setShowReinstateModal(false);
       setReinstateReason('');
       setMessage({ type: 'success', text: 'Account successfully reinstated' });
       setTimeout(() => setMessage(null), 3000);
     } else {
-      setMessage({ type: 'error', text: result.error });
+      setMessage({ type: 'error', text: result.error || 'Failed to reinstate account' });
     }
   };
+
+  // figure out what tier applies to a given order total (used for view-mode display)
+  const getTierLabel = (tier, index, allTiers) => {
+    if (tier.limit !== null) {
+      const prevLimit = index > 0 ? allTiers[index - 1].limit : 0;
+      return prevLimit > 0
+        ? `£${prevLimit.toLocaleString()} – £${tier.limit.toLocaleString()}`
+        : `Up to £${tier.limit.toLocaleString()}`;
+    }
+    // open-ended final tier
+    const prevLimit = index > 0 ? allTiers[index - 1].limit : 0;
+    return `Over £${prevLimit?.toLocaleString() || '0'}`;
+  };
+
+  const pageTitle = isMerchantSelfView ? 'My Account' : merchant.companyName;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '900px' }}>
 
-      {/* Back button and page header */}
+      {/* header row with back button, title and action buttons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <button
           onClick={() => navigate(backPath)}
@@ -260,14 +347,9 @@ function AccountDetailPage() {
 
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <h1 style={{
-              fontSize: '1.5rem',
-              fontWeight: '700',
-              color: '#0f172a',
-            }}>
-              {merchant.companyName}
+            <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#0f172a' }}>
+              {pageTitle}
             </h1>
-            {/* Account status badge */}
             <span style={{
               background: statusStyle.bg,
               color: statusStyle.color,
@@ -284,9 +366,8 @@ function AccountDetailPage() {
           </p>
         </div>
 
-        {/* Action buttons - shown based on role and account status */}
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          {/* Reinstate button - only for director on defaulted accounts */}
+          {/* reinstate button - director only, defaulted accounts only */}
           {canReinstate && (
             <button
               onClick={() => setShowReinstateModal(true)}
@@ -309,7 +390,6 @@ function AccountDetailPage() {
             </button>
           )}
 
-          {/* Edit/Save/Cancel buttons for admins and managers */}
           {canEdit && !isEditing && (
             <button
               onClick={() => setIsEditing(true)}
@@ -332,11 +412,11 @@ function AccountDetailPage() {
             </button>
           )}
 
-          {/* Save and cancel shown when in edit mode */}
           {isEditing && (
             <>
               <button
                 onClick={handleCancel}
+                disabled={isSaving}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -348,7 +428,8 @@ function AccountDetailPage() {
                   padding: '0.625rem 1.25rem',
                   fontSize: '0.875rem',
                   fontWeight: '600',
-                  cursor: 'pointer',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  opacity: isSaving ? 0.5 : 1,
                 }}
               >
                 <FiX size={16} />
@@ -356,29 +437,48 @@ function AccountDetailPage() {
               </button>
               <button
                 onClick={handleSave}
+                disabled={isSaving}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.5rem',
-                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  background: isSaving
+                    ? '#cbd5e1'
+                    : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
                   color: 'white',
                   border: 'none',
                   borderRadius: '0.625rem',
                   padding: '0.625rem 1.25rem',
                   fontSize: '0.875rem',
                   fontWeight: '600',
-                  cursor: 'pointer',
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
                 }}
               >
-                <FiSave size={16} />
-                Save Changes
+                {isSaving ? (
+                  <>
+                    <div style={{
+                      width: '14px',
+                      height: '14px',
+                      border: '2px solid rgba(255,255,255,0.4)',
+                      borderTop: '2px solid white',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite',
+                    }} />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <FiSave size={16} />
+                    Save Changes
+                  </>
+                )}
               </button>
             </>
           )}
         </div>
       </div>
 
-      {/* Success or error message banner */}
+      {/* success / error banner */}
       {message && (
         <div style={{
           display: 'flex',
@@ -400,10 +500,10 @@ function AccountDetailPage() {
         </div>
       )}
 
-      {/* Two column layout - contact details left, credit info right */}
+      {/* two-column layout: contact details left, credit + discount right */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
 
-        {/* Contact details card */}
+        {/* contact details card */}
         <div style={{
           background: 'white',
           borderRadius: '0.75rem',
@@ -423,8 +523,6 @@ function AccountDetailPage() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {/* Each field switches between a text input (edit mode)
-                and plain text (view mode) */}
             <DetailField
               icon={FiUser}
               label="Company Name"
@@ -463,10 +561,10 @@ function AccountDetailPage() {
           </div>
         </div>
 
-        {/* Credit and discount card */}
+        {/* right column: credit info + discount plan */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-          {/* Credit info */}
+          {/* credit info card */}
           <div style={{
             background: 'white',
             borderRadius: '0.75rem',
@@ -488,14 +586,15 @@ function AccountDetailPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Credit Limit</p>
-                {/* Credit limit is editable by admin/manager */}
+                {/* admins/managers can change the credit limit */}
                 {isEditing ? (
                   <input
                     type="number"
                     value={formData.creditLimit}
+                    min="0"
                     onChange={(e) => setFormData({
                       ...formData,
-                      creditLimit: Number(e.target.value)
+                      creditLimit: Number(e.target.value),
                     })}
                     style={{
                       width: '120px',
@@ -504,6 +603,7 @@ function AccountDetailPage() {
                       borderRadius: '0.375rem',
                       fontSize: '0.875rem',
                       textAlign: 'right',
+                      outline: 'none',
                     }}
                   />
                 ) : (
@@ -518,6 +618,40 @@ function AccountDetailPage() {
                 <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#dc2626' }}>
                   £{merchant.currentDebt.toLocaleString()}
                 </p>
+              </div>
+
+              {/* account status - managers and admins can change this */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Account Status</p>
+                {isEditing && canEdit ? (
+                  <select
+                    value={formData.accountStatus}
+                    onChange={(e) => setFormData({ ...formData, accountStatus: e.target.value })}
+                    style={{
+                      padding: '0.25rem 0.5rem',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value={ACCOUNT_STATUS.NORMAL}>Normal</option>
+                    <option value={ACCOUNT_STATUS.SUSPENDED}>Suspended</option>
+                    <option value={ACCOUNT_STATUS.IN_DEFAULT}>In Default</option>
+                  </select>
+                ) : (
+                  <span style={{
+                    background: statusStyle.bg,
+                    color: statusStyle.color,
+                    padding: '0.2rem 0.625rem',
+                    borderRadius: '9999px',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                  }}>
+                    {statusStyle.label}
+                  </span>
+                )}
               </div>
 
               <div style={{
@@ -538,7 +672,7 @@ function AccountDetailPage() {
             </div>
           </div>
 
-          {/* Discount plan card */}
+          {/* discount plan card */}
           <div style={{
             background: 'white',
             borderRadius: '0.75rem',
@@ -558,21 +692,24 @@ function AccountDetailPage() {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+
+              {/* plan type - dropdown in edit mode, badge in view mode */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Plan Type</p>
                 {isEditing ? (
-                  // Dropdown to switch between fixed and flexible discount
                   <select
                     value={formData.discountPlanType}
-                    onChange={(e) => setFormData({
-                      ...formData,
-                      discountPlanType: e.target.value
-                    })}
+                    onChange={(e) => {
+                      setFormData({ ...formData, discountPlanType: e.target.value });
+                      setTierErrors('');
+                    }}
                     style={{
                       padding: '0.25rem 0.5rem',
                       border: '1px solid #e2e8f0',
                       borderRadius: '0.375rem',
                       fontSize: '0.875rem',
+                      outline: 'none',
+                      cursor: 'pointer',
                     }}
                   >
                     <option value={DISCOUNT_TYPES.FIXED}>Fixed</option>
@@ -593,7 +730,7 @@ function AccountDetailPage() {
                 )}
               </div>
 
-              {/* Fixed discount rate field - only shown for fixed plan */}
+              {/* fixed rate field */}
               {formData.discountPlanType === DISCOUNT_TYPES.FIXED && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Discount Rate</p>
@@ -601,9 +738,11 @@ function AccountDetailPage() {
                     <input
                       type="number"
                       value={formData.fixedDiscountRate}
+                      min="0"
+                      max="100"
                       onChange={(e) => setFormData({
                         ...formData,
-                        fixedDiscountRate: Number(e.target.value)
+                        fixedDiscountRate: Number(e.target.value),
                       })}
                       style={{
                         width: '80px',
@@ -612,6 +751,7 @@ function AccountDetailPage() {
                         borderRadius: '0.375rem',
                         fontSize: '0.875rem',
                         textAlign: 'right',
+                        outline: 'none',
                       }}
                     />
                   ) : (
@@ -622,35 +762,172 @@ function AccountDetailPage() {
                 </div>
               )}
 
-              {/* Flexible discount thresholds - shown for flexible plan */}
-              {formData.discountPlanType === DISCOUNT_TYPES.FLEXIBLE && merchant.flexibleThresholds && (
+              {/* flexible tier editor / viewer */}
+              {formData.discountPlanType === DISCOUNT_TYPES.FLEXIBLE && (
                 <div>
                   <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
-                    Monthly order thresholds:
+                    Monthly order value thresholds:
                   </p>
-                  {merchant.flexibleThresholds.map((threshold, i) => (
-                    <div
-                      key={i}
+
+                  {/* tier error message */}
+                  {tierErrors && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.375rem',
+                      background: '#fee2e2',
+                      color: '#dc2626',
+                      fontSize: '0.75rem',
+                      padding: '0.5rem 0.625rem',
+                      borderRadius: '0.375rem',
+                      marginBottom: '0.5rem',
+                    }}>
+                      <FiAlertCircle size={12} />
+                      {tierErrors}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                    {formData.flexibleThresholds.map((tier, i) => {
+                      const isOpenTier = tier.limit === null;
+                      const prevLimit = i > 0 ? formData.flexibleThresholds[i - 1].limit : 0;
+                      const canRemove = !isOpenTier && formData.flexibleThresholds.length > 2;
+
+                      if (!isEditing) {
+                        // view mode - read only display of each tier
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              padding: '0.375rem 0',
+                              borderBottom: i < formData.flexibleThresholds.length - 1
+                                ? '1px solid #f1f5f9'
+                                : 'none',
+                            }}
+                          >
+                            <p style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                              {getTierLabel(tier, i, formData.flexibleThresholds)}
+                            </p>
+                            <p style={{ fontSize: '0.8rem', fontWeight: '600', color: '#0f172a' }}>
+                              {tier.rate}%
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      // edit mode - inputs for each tier
+                      return (
+                        <div
+                          key={i}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            padding: '0.375rem 0',
+                          }}
+                        >
+                          {/* tier range label / limit input */}
+                          <div style={{ flex: 1, fontSize: '0.75rem', color: '#64748b' }}>
+                            {isOpenTier ? (
+                              <span>Over £{prevLimit?.toLocaleString() || '0'}</span>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <span style={{ whiteSpace: 'nowrap' }}>Up to £</span>
+                                <input
+                                  type="number"
+                                  value={tier.limit}
+                                  min="1"
+                                  onChange={(e) => updateTier(i, 'limit', Number(e.target.value))}
+                                  style={{
+                                    width: '70px',
+                                    padding: '0.2rem 0.375rem',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: '0.25rem',
+                                    fontSize: '0.75rem',
+                                    outline: 'none',
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* discount rate input */}
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                          }}>
+                            <input
+                              type="number"
+                              value={tier.rate}
+                              min="0"
+                              max="100"
+                              onChange={(e) => updateTier(i, 'rate', Number(e.target.value))}
+                              style={{
+                                width: '50px',
+                                padding: '0.2rem 0.375rem',
+                                border: '1px solid #e2e8f0',
+                                borderRadius: '0.25rem',
+                                fontSize: '0.75rem',
+                                textAlign: 'right',
+                                outline: 'none',
+                              }}
+                            />
+                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>%</span>
+                          </div>
+
+                          {/* remove button - not shown for the last open tier */}
+                          {canRemove ? (
+                            <button
+                              onClick={() => removeTier(i)}
+                              title="Remove tier"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                color: '#ef4444',
+                                padding: '0.2rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <FiTrash2 size={12} />
+                            </button>
+                          ) : (
+                            // placeholder to keep layout consistent
+                            <div style={{ width: '20px' }} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* add tier button in edit mode */}
+                  {isEditing && (
+                    <button
+                      onClick={addTier}
                       style={{
                         display: 'flex',
-                        justifyContent: 'space-between',
-                        padding: '0.375rem 0',
-                        borderBottom: i < merchant.flexibleThresholds.length - 1
-                          ? '1px solid #f1f5f9'
-                          : 'none',
+                        alignItems: 'center',
+                        gap: '0.375rem',
+                        marginTop: '0.5rem',
+                        background: 'none',
+                        border: '1px dashed #c7d2fe',
+                        borderRadius: '0.375rem',
+                        color: '#6366f1',
+                        fontSize: '0.75rem',
+                        padding: '0.375rem 0.75rem',
+                        cursor: 'pointer',
+                        width: '100%',
+                        justifyContent: 'center',
                       }}
                     >
-                      <p style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                        {threshold.upTo
-                          ? `Up to £${threshold.upTo}`
-                          : `Over £${threshold.above}`
-                        }
-                      </p>
-                      <p style={{ fontSize: '0.8rem', fontWeight: '600', color: '#0f172a' }}>
-                        {threshold.rate}%
-                      </p>
-                    </div>
-                  ))}
+                      <FiPlus size={12} />
+                      Add Tier
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -658,7 +935,7 @@ function AccountDetailPage() {
         </div>
       </div>
 
-      {/* Account metadata - created date, last order etc */}
+      {/* account metadata footer */}
       <div style={{
         background: 'white',
         borderRadius: '0.75rem',
@@ -681,7 +958,6 @@ function AccountDetailPage() {
           </p>
         </div>
 
-        {/* Show reinstatement details if the account was previously defaulted */}
         {merchant.reinstatedAt && (
           <div>
             <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Last Reinstated</p>
@@ -692,7 +968,7 @@ function AccountDetailPage() {
         )}
       </div>
 
-      {/* Reinstate modal - only shown when director clicks Reinstate Account */}
+      {/* director reinstatement modal */}
       {showReinstateModal && (
         <div style={{
           position: 'fixed',
@@ -716,12 +992,10 @@ function AccountDetailPage() {
               Reinstate Account
             </h3>
             <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-              You are reinstating <strong>{merchant.companyName}</strong> from
-              " In Default " to " Normal " status. A reason is required for the
-              audit trail as per company policy.
+              You are reinstating <strong>{merchant.companyName}</strong> from "In Default"
+              to "Normal" status. A reason is required for the audit trail.
             </p>
 
-            {/* Required reason field - matches SA-DIR-01 acceptance criteria */}
             <label style={{
               display: 'block',
               fontSize: '0.875rem',
@@ -750,7 +1024,6 @@ function AccountDetailPage() {
               }}
             />
 
-            {/* Modal action buttons */}
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button
                 onClick={() => {
@@ -770,10 +1043,8 @@ function AccountDetailPage() {
               >
                 Cancel
               </button>
-
               <button
                 onClick={handleReinstate}
-                // Disabled until the director types a reason
                 disabled={!reinstateReason.trim()}
                 style={{
                   background: reinstateReason.trim()
@@ -794,12 +1065,13 @@ function AccountDetailPage() {
           </div>
         </div>
       )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
-// Reusable field component that switches between view and edit mode
-// Keeps the code clean instead of repeating the if/else for every field
+// reusable field that switches between a text input (edit mode) and plain text (view mode)
 function DetailField({ icon: Icon, label, value, isEditing, onChange }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

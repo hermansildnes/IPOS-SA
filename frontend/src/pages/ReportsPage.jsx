@@ -442,6 +442,149 @@ function StockTurnoverReport({ data }) {
   );
 }
 
+//  invoices raised against a specific merchant for a period
+// staff can click through each invoice to see the details on screen
+function MerchantInvoicesReport({ data }) {
+  const [expandedId, setExpandedId] = useState(null);
+
+  return (
+    <div>
+      {/* merchant header */}
+      <div className="bg-gray-50 rounded-lg p-4 mb-6 grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
+        <div><span className="text-gray-500">Company:</span> <span className="font-medium">{data.company_name}</span></div>
+        <div><span className="text-gray-500">Account:</span> <span className="font-medium">{data.account_number}</span></div>
+        <div><span className="text-gray-500">Contact:</span> {data.contact_name}</div>
+        <div><span className="text-gray-500">Email:</span> {data.contact_email}</div>
+        <div className="col-span-2"><span className="text-gray-500">Address:</span> {data.address}</div>
+        <div className="col-span-2 text-gray-400">Period: {data.start_date} → {data.end_date}</div>
+      </div>
+
+      <div className="flex items-center gap-4 mb-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-right">
+          <p className="text-xs text-blue-600 font-medium">Total Invoiced</p>
+          <p className="text-xl font-bold text-blue-800">{fmt(data.total_amount_due)}</p>
+        </div>
+        <span className="text-sm text-gray-500">{data.total_invoices} invoice{data.total_invoices !== 1 ? 's' : ''}</span>
+      </div>
+
+      {data.invoices.length === 0 ? (
+        <p className="text-gray-400 text-sm text-center py-8">No invoices in this period.</p>
+      ) : (
+        <div className="space-y-2">
+          {data.invoices.map((inv) => (
+            <div key={inv.invoice_id} className="border border-gray-200 rounded-lg overflow-hidden">
+              {/* clickable header row - click to expand invoice details */}
+              <button
+                onClick={() => setExpandedId(expandedId === inv.invoice_id ? null : inv.invoice_id)}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="font-mono text-xs text-gray-400">INV-{inv.invoice_id.slice(0, 8).toUpperCase()}</span>
+                  <span className="text-sm text-gray-600">{inv.invoice_date}</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-semibold text-blue-700">{fmt(inv.amount_due)}</span>
+                  <span className="text-gray-400 text-xs">{expandedId === inv.invoice_id ? '▲' : '▼'}</span>
+                </div>
+              </button>
+
+              {/* expanded invoice detail */}
+              {expandedId === inv.invoice_id && (
+                <div className="border-t border-gray-200 px-6 py-4 bg-gray-50/50 text-sm space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Order Reference</span>
+                    <span className="font-mono text-xs text-gray-600">ORD-{inv.order_id.slice(0, 8).toUpperCase()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Invoice Date</span>
+                    <span>{inv.invoice_date}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Total Amount</span>
+                    <span>{fmt(inv.total_amount)}</span>
+                  </div>
+                  {parseFloat(inv.discount_amount) > 0 && (
+                    <div className="flex justify-between text-green-700">
+                      <span>Discount Applied</span>
+                      <span>−{fmt(inv.discount_amount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold border-t border-gray-200 pt-2">
+                    <span>Amount Due</span>
+                    <span className="text-blue-700">{fmt(inv.amount_due)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// all invoices raised by InfoPharma for a period (across all merchants)
+function AllInvoicesReport({ data }) {
+  return (
+    <div>
+      <div className="flex items-center gap-4 mb-4">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-right">
+          <p className="text-xs text-blue-600 font-medium">Grand Total Invoiced</p>
+          <p className="text-xl font-bold text-blue-800">{fmt(data.grand_total_amount_due)}</p>
+        </div>
+        <span className="text-sm text-gray-500">
+          {data.total_invoices} invoice{data.total_invoices !== 1 ? 's' : ''} | Period: {data.start_date} → {data.end_date}
+        </span>
+      </div>
+
+      {data.invoices.length === 0 ? (
+        <p className="text-gray-400 text-sm text-center py-8">No invoices in this period.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Invoice ID</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Merchant</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Account</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Date</th>
+                <th className="text-right px-4 py-3 font-medium text-gray-600">Total, £</th>
+                <th className="text-right px-4 py-3 font-medium text-gray-600">Discount, £</th>
+                <th className="text-right px-4 py-3 font-medium text-gray-600">Amount Due, £</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.invoices.map((inv) => (
+                <tr key={inv.invoice_id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-400">
+                    INV-{inv.invoice_id.slice(0, 8).toUpperCase()}
+                  </td>
+                  <td className="px-4 py-3 font-medium">{inv.company_name}</td>
+                  <td className="px-4 py-3 text-gray-500">{inv.account_number}</td>
+                  <td className="px-4 py-3 text-gray-600">{inv.invoice_date}</td>
+                  <td className="px-4 py-3 text-right">{fmt(inv.total_amount)}</td>
+                  <td className="px-4 py-3 text-right text-green-700">
+                    {parseFloat(inv.discount_amount) > 0 ? `−${fmt(inv.discount_amount)}` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right font-medium text-blue-700">{fmt(inv.amount_due)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 font-semibold border-t-2 border-gray-300">
+                <td colSpan={4} className="px-4 py-3 text-gray-700">TOTALS</td>
+                <td className="px-4 py-3 text-right">—</td>
+                <td className="px-4 py-3 text-right">—</td>
+                <td className="px-4 py-3 text-right text-blue-700">{fmt(data.grand_total_amount_due)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── main page ───────────────────────────────────────────────────────────────
 
 const REPORT_ICONS = {
@@ -480,12 +623,28 @@ const REPORT_ICONS = {
       </svg>
     </div>
   ),
+  'merchant-invoices': (
+    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{backgroundColor: '#fce7f3'}}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9d174d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
+      </svg>
+    </div>
+  ),
+  'all-invoices': (
+    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{backgroundColor: '#ecfdf5'}}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#065f46" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+      </svg>
+    </div>
+  ),
 };
 
 const REPORT_TYPES = [
   { id: 'turnover', label: 'Turnover', desc: 'Revenue & quantities sold' },
   { id: 'merchant-summary', label: 'Orders Summary', desc: 'Orders for a merchant' },
   { id: 'merchant-detailed', label: 'Orders Detailed', desc: 'Full order breakdown' },
+  { id: 'merchant-invoices', label: 'Merchant Invoices', desc: 'Invoices per merchant' },
+  { id: 'all-invoices', label: 'All Invoices', desc: 'All InfoPharma invoices' },
   { id: 'low-stock', label: 'Low Stock', desc: 'Items below minimum' },
   { id: 'stock-turnover', label: 'Stock Turnover', desc: 'Goods in & out' },
 ];
@@ -502,10 +661,10 @@ function ReportsPage() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const reportRef = useRef(null);
 
-  const needsMerchant = ['merchant-summary', 'merchant-detailed'].includes(activeReport);
+  const needsMerchant = ['merchant-summary', 'merchant-detailed', 'merchant-invoices'].includes(activeReport);
   const needsDates = activeReport !== 'low-stock';
 
-  // Load merchant list for merchant-specific reports
+  // load merchant list for merchant-specific reports
   useEffect(() => {
     if (needsMerchant) {
       apiClient.get('/merchants').then((data) => {
@@ -543,6 +702,11 @@ function ReportsPage() {
       } else if (activeReport === 'merchant-detailed') {
         if (!selectedMerchantId) throw new Error('Please select a merchant');
         data = await reportService.getMerchantOrdersDetailed(selectedMerchantId, startDate, endDate);
+      } else if (activeReport === 'merchant-invoices') {
+        if (!selectedMerchantId) throw new Error('Please select a merchant');
+        data = await reportService.getMerchantInvoicesReport(selectedMerchantId, startDate, endDate);
+      } else if (activeReport === 'all-invoices') {
+        data = await reportService.getAllInvoicesReport(startDate, endDate);
       } else if (activeReport === 'low-stock') {
         data = await reportService.getLowStockReport();
       } else if (activeReport === 'stock-turnover') {
@@ -612,7 +776,7 @@ function ReportsPage() {
         </div>
 
         {/* Report type selector */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
           {REPORT_TYPES.map((rt) => (
             <button
               key={rt.id}
@@ -685,6 +849,8 @@ function ReportsPage() {
                   {activeReport === 'turnover' && <TurnoverReport data={reportData} />}
                   {activeReport === 'merchant-summary' && <MerchantSummaryReport data={reportData} />}
                   {activeReport === 'merchant-detailed' && <MerchantDetailedReport data={reportData} />}
+                  {activeReport === 'merchant-invoices' && <MerchantInvoicesReport data={reportData} />}
+                  {activeReport === 'all-invoices' && <AllInvoicesReport data={reportData} />}
                   {activeReport === 'low-stock' && <LowStockReport data={reportData} />}
                   {activeReport === 'stock-turnover' && <StockTurnoverReport data={reportData} />}
                 </>

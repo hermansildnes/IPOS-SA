@@ -10,6 +10,7 @@ import {
 } from 'react-icons/fi';
 import { getCatalogue } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
+import reportService from '../services/reportService';
 
 function CataloguePage() {
   const navigate = useNavigate();
@@ -23,11 +24,29 @@ function CataloguePage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState([]);
+  const [lowStockCount, setLowStockCount] = useState(0);
+  const [showLowStockBanner, setShowLowStockBanner] = useState(true);
 
-  // Load products on mount
+  // load products on mount
   useEffect(() => {
     loadProducts();
   }, []);
+
+  // check for low stock items - admin/manager only
+  // this fires every time the catalogue page is opened, as required by the brief
+  useEffect(() => {
+    const isStaff = user?.role === 'admin' || user?.role === 'manager';
+    if (!isStaff) return;
+
+    reportService.getLowStockReport().then((report) => {
+      if (report?.total_items_below_minimum > 0) {
+        setLowStockCount(report.total_items_below_minimum);
+        setShowLowStockBanner(true);
+      }
+    }).catch(() => {
+      // silently ignore - not worth crashing the page over
+    });
+  }, [user]);
 
   // Load cart for the current logged-in user
   useEffect(() => {
@@ -120,8 +139,52 @@ function CataloguePage() {
     sum + (item.product.packageCost * item.quantity), 0
   );
 
+  const isStaff = user?.role === 'admin' || user?.role === 'manager';
+
   return (
     <div style={{ padding: '1.5rem' }}>
+
+      {/* Low stock warning banner - only shown to admin/manager */}
+      {isStaff && showLowStockBanner && lowStockCount > 0 && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.75rem',
+          background: '#fef3c7',
+          border: '1px solid #fcd34d',
+          borderRadius: '0.75rem',
+          padding: '0.875rem 1.25rem',
+          marginBottom: '1.5rem',
+          color: '#92400e',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <FiAlertCircle size={18} style={{ flexShrink: 0 }} />
+            <div>
+              <p style={{ fontWeight: '600', fontSize: '0.875rem' }}>
+                Low stock alert: {lowStockCount} item{lowStockCount !== 1 ? 's' : ''} below minimum level
+              </p>
+              <p style={{ fontSize: '0.75rem', marginTop: '0.1rem' }}>
+                Go to Reports → Low Stock to see the full list and recommended reorder quantities.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowLowStockBanner(false)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#92400e',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              lineHeight: 1,
+              flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Page Header */}
       <div style={{

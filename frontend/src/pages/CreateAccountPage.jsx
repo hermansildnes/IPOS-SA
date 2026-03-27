@@ -14,13 +14,20 @@ import {
   FiAlertCircle,
   FiCheckCircle,
   FiLock,
+  FiPlus,
+  FiTrash2,
 } from 'react-icons/fi';
+
+// default flexible discount tiers to pre-fill when switching to flexible plan
+const DEFAULT_TIERS = [
+  { limit: 1000, rate: 5 },
+  { limit: null, rate: 10 },
+];
 
 function CreateAccountPage() {
   const navigate = useNavigate();
 
-  // form state for both the merchant login details
-  // and the merchant account/business details
+  // formData holds all the field values for both merchant login and account details
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -32,33 +39,77 @@ function CreateAccountPage() {
     creditLimit: '',
     discountType: DISCOUNT_TYPES.FIXED,
     discountRate: '',
+    flexibleThresholds: DEFAULT_TIERS,
   });
 
-  // validation errors for each field
   const [errors, setErrors] = useState({});
-
-  // success or error message after submitting
   const [message, setMessage] = useState(null);
-
-  // loading state while creating the account
   const [isCreating, setIsCreating] = useState(false);
+  const [tierError, setTierError] = useState('');
 
-  // updates form data when user types in any field
   const handleChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
-
+    // clear the error for this field when the user starts correcting it
     if (errors[field]) {
       setErrors({ ...errors, [field]: null });
     }
   };
 
+  // --- flexible tier management ---
+
+  const addTier = () => {
+    const tiers = [...formData.flexibleThresholds];
+    const bounded = tiers.filter((t) => t.limit !== null);
+    const lastLimit = bounded.length > 0 ? bounded[bounded.length - 1].limit : 0;
+    const openIndex = tiers.findIndex((t) => t.limit === null);
+    const newTier = { limit: lastLimit + 1000, rate: 0 };
+    if (openIndex >= 0) {
+      tiers.splice(openIndex, 0, newTier);
+    } else {
+      tiers.push(newTier);
+    }
+    setFormData({ ...formData, flexibleThresholds: tiers });
+    setTierError('');
+  };
+
+  const removeTier = (index) => {
+    const tiers = [...formData.flexibleThresholds];
+    tiers.splice(index, 1);
+    setFormData({ ...formData, flexibleThresholds: tiers });
+    setTierError('');
+  };
+
+  const updateTier = (index, field, value) => {
+    const tiers = formData.flexibleThresholds.map((t, i) =>
+      i === index ? { ...t, [field]: value } : t
+    );
+    setFormData({ ...formData, flexibleThresholds: tiers });
+    setTierError('');
+  };
+
+  const validateTiers = (tiers) => {
+    const bounded = tiers.filter((t) => t.limit !== null);
+    for (let i = 1; i < bounded.length; i++) {
+      if (bounded[i].limit <= bounded[i - 1].limit) {
+        return 'Tier thresholds must be in ascending order with no duplicates';
+      }
+    }
+    for (const t of tiers) {
+      if (t.rate < 0 || t.rate > 100) {
+        return 'Discount rates must be between 0 and 100';
+      }
+    }
+    return null;
+  };
+
+  // validates all form fields and populates the errors state
   const validateForm = () => {
     const newErrors = {};
 
-    // login details are now required because account creation
-    // also creates the linked merchant user login
     if (!formData.username.trim()) {
       newErrors.username = 'Username is required';
+    } else if (formData.username.length < 3) {
+      newErrors.username = 'Username must be at least 3 characters';
     }
 
     if (!formData.password.trim()) {
@@ -67,57 +118,69 @@ function CreateAccountPage() {
       newErrors.password = 'Password must be at least 6 characters';
     }
 
-    // Check each required merchant/account field is filled in
     if (!formData.companyName.trim()) {
       newErrors.companyName = 'Company name is required';
     }
+
     if (!formData.contactName.trim()) {
       newErrors.contactName = 'Contact name is required';
     }
+
     if (!formData.email.trim()) {
       newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      // Basic email format validation
-      newErrors.email = 'Email format is invalid';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Enter a valid email address';
     }
+
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone number is required';
+    } else if (!/^[\d\s\+\-\(\)]{7,15}$/.test(formData.phone.trim())) {
+      // basic check - at least 7 digits and only allowed characters
+      newErrors.phone = 'Enter a valid phone number (digits, spaces, +, -, brackets)';
     }
+
     if (!formData.address.trim()) {
       newErrors.address = 'Address is required';
     }
+
     if (!formData.creditLimit || Number(formData.creditLimit) <= 0) {
       newErrors.creditLimit = 'Credit limit must be greater than 0';
+    } else if (Number(formData.creditLimit) > 1000000) {
+      newErrors.creditLimit = 'Credit limit seems too high - please double check';
     }
 
-    // Discount rate only required for fixed plans
-    if (
-      formData.discountType === DISCOUNT_TYPES.FIXED &&
-      (formData.discountRate === '' || Number(formData.discountRate) < 0)
-    ) {
-      newErrors.discountRate = 'Discount rate is required and must be 0 or greater';
+    if (formData.discountType === DISCOUNT_TYPES.FIXED) {
+      if (formData.discountRate === '' || Number(formData.discountRate) < 0) {
+        newErrors.discountRate = 'Discount rate must be 0 or greater';
+      } else if (Number(formData.discountRate) > 100) {
+        newErrors.discountRate = 'Discount rate cannot exceed 100%';
+      }
+    }
+
+    if (formData.discountType === DISCOUNT_TYPES.FLEXIBLE) {
+      const tierErr = validateTiers(formData.flexibleThresholds);
+      if (tierErr) setTierError(tierErr);
+      else setTierError('');
+      if (tierErr) {
+        newErrors.flexibleTiers = tierErr;
+      }
     }
 
     setErrors(newErrors);
-    // Return true if no errors found
     return Object.keys(newErrors).length === 0;
   };
 
-  // Runs when user clicks Create Account button
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // First validate the form
     if (!validateForm()) {
-      setMessage({ type: 'error', text: 'Please fix the errors above' });
+      setMessage({ type: 'error', text: 'Please fix the errors above before continuing' });
       return;
     }
 
     setIsCreating(true);
     setMessage(null);
 
-    // Prepare the data to send to the service
-    // backend now expects login fields as well as merchant details
     const merchantData = {
       username: formData.username,
       password: formData.password,
@@ -133,22 +196,23 @@ function CreateAccountPage() {
         formData.discountType === DISCOUNT_TYPES.FIXED
           ? Number(formData.discountRate)
           : null,
+      flexibleThresholds:
+        formData.discountType === DISCOUNT_TYPES.FLEXIBLE
+          ? formData.flexibleThresholds
+          : null,
     };
 
-    // create the merchant via the service layer
     const result = await createMerchant(merchantData);
 
     if (result.success) {
       setMessage({
         type: 'success',
-        text: 'Account created successfully! Redirecting to account details...'
+        text: 'Account created successfully! Redirecting...',
       });
-
       setTimeout(() => {
         navigate(`/accounts/${result.merchant.id}`);
       }, 1500);
     } else {
-      // failed - show the error from the service layer
       setMessage({ type: 'error', text: result.error || 'Failed to create account' });
       setIsCreating(false);
     }
@@ -157,7 +221,7 @@ function CreateAccountPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '800px' }}>
 
-      {/* Page header with back button */}
+      {/* header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <button
           onClick={() => navigate('/accounts')}
@@ -175,20 +239,16 @@ function CreateAccountPage() {
           <FiArrowLeft size={16} style={{ color: '#64748b' }} />
         </button>
         <div>
-          <h1 style={{
-            fontSize: '1.5rem',
-            fontWeight: '700',
-            color: '#0f172a',
-          }}>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#0f172a' }}>
             Create New Merchant Account
           </h1>
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            Create the merchant login and account in one step
+            Creates the merchant login and account in one step
           </p>
         </div>
       </div>
 
-      {/* Success or error message banner */}
+      {/* success / error banner */}
       {message && (
         <div style={{
           display: 'flex',
@@ -207,28 +267,16 @@ function CreateAccountPage() {
         </div>
       )}
 
-      {/* Main form */}
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
-        {/* Login details section - these credentials are used by the new merchant to sign in */}
+        {/* login details - these become the new merchant's sign-in credentials */}
         <div style={{
           background: 'white',
           borderRadius: '0.75rem',
           border: '1px solid #e2e8f0',
           padding: '1.5rem',
         }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginBottom: '1.25rem',
-          }}>
-            <FiUser size={16} style={{ color: '#6366f1' }} />
-            <h3 style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.9rem' }}>
-              Login Details
-            </h3>
-          </div>
-
+          <SectionHeader icon={FiLock} title="Login Credentials" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <FormField
               icon={FiUser}
@@ -244,31 +292,20 @@ function CreateAccountPage() {
               value={formData.password}
               onChange={(v) => handleChange('password', v)}
               error={errors.password}
-              placeholder="Enter a temporary password"
+              placeholder="Minimum 6 characters"
               type="password"
             />
           </div>
         </div>
 
-        {/* Contact details section */}
+        {/* contact details */}
         <div style={{
           background: 'white',
           borderRadius: '0.75rem',
           border: '1px solid #e2e8f0',
           padding: '1.5rem',
         }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginBottom: '1.25rem',
-          }}>
-            <FiUser size={16} style={{ color: '#6366f1' }} />
-            <h3 style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.9rem' }}>
-              Contact Details
-            </h3>
-          </div>
-
+          <SectionHeader icon={FiUser} title="Contact Details" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <FormField
               icon={FiUser}
@@ -302,6 +339,7 @@ function CreateAccountPage() {
               onChange={(v) => handleChange('phone', v)}
               error={errors.phone}
               placeholder="e.g. 0207 123 4567"
+              type="tel"
             />
             <FormField
               icon={FiMapPin}
@@ -314,27 +352,17 @@ function CreateAccountPage() {
           </div>
         </div>
 
-        {/* Credit and discount section */}
+        {/* credit and discount section */}
         <div style={{
           background: 'white',
           borderRadius: '0.75rem',
           border: '1px solid #e2e8f0',
           padding: '1.5rem',
         }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginBottom: '1.25rem',
-          }}>
-            <FiCreditCard size={16} style={{ color: '#6366f1' }} />
-            <h3 style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.9rem' }}>
-              Credit & Discount Configuration
-            </h3>
-          </div>
-
+          <SectionHeader icon={FiCreditCard} title="Credit & Discount Configuration" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {/* Credit limit field */}
+
+            {/* credit limit */}
             <div>
               <label style={{
                 display: 'flex',
@@ -353,6 +381,7 @@ function CreateAccountPage() {
                 value={formData.creditLimit}
                 onChange={(e) => handleChange('creditLimit', e.target.value)}
                 placeholder="e.g. 10000"
+                min="0"
                 style={{
                   width: '100%',
                   padding: '0.625rem',
@@ -366,7 +395,7 @@ function CreateAccountPage() {
               {errors.creditLimit && <FieldError text={errors.creditLimit} />}
             </div>
 
-            {/* Discount type dropdown */}
+            {/* discount plan type selector */}
             <div>
               <label style={{
                 display: 'flex',
@@ -382,7 +411,10 @@ function CreateAccountPage() {
               </label>
               <select
                 value={formData.discountType}
-                onChange={(e) => handleChange('discountType', e.target.value)}
+                onChange={(e) => {
+                  handleChange('discountType', e.target.value);
+                  setTierError('');
+                }}
                 style={{
                   width: '100%',
                   padding: '0.625rem',
@@ -394,12 +426,12 @@ function CreateAccountPage() {
                   cursor: 'pointer',
                 }}
               >
-                <option value={DISCOUNT_TYPES.FIXED}>Fixed - Same rate on all orders</option>
-                <option value={DISCOUNT_TYPES.FLEXIBLE}>Flexible - Tiered by monthly order value</option>
+                <option value={DISCOUNT_TYPES.FIXED}>Fixed – same rate on all orders</option>
+                <option value={DISCOUNT_TYPES.FLEXIBLE}>Flexible – tiered by monthly order value</option>
               </select>
             </div>
 
-            {/* Discount rate field - only shown for fixed plans */}
+            {/* fixed discount rate */}
             {formData.discountType === DISCOUNT_TYPES.FIXED && (
               <div>
                 <label style={{
@@ -419,6 +451,8 @@ function CreateAccountPage() {
                   value={formData.discountRate}
                   onChange={(e) => handleChange('discountRate', e.target.value)}
                   placeholder="e.g. 5"
+                  min="0"
+                  max="100"
                   style={{
                     width: '100%',
                     padding: '0.625rem',
@@ -432,10 +466,165 @@ function CreateAccountPage() {
                 {errors.discountRate && <FieldError text={errors.discountRate} />}
               </div>
             )}
+
+            {/* flexible tier editor */}
+            {formData.discountType === DISCOUNT_TYPES.FLEXIBLE && (
+              <div>
+                <p style={{
+                  fontSize: '0.875rem',
+                  color: '#374151',
+                  fontWeight: '500',
+                  marginBottom: '0.5rem',
+                }}>
+                  Discount Tiers (by monthly order value)
+                </p>
+
+                <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.75rem' }}>
+                  Define thresholds in ascending order. The final tier applies to all orders above the last limit.
+                </p>
+
+                {tierError && <FieldError text={tierError} />}
+
+                <div style={{
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '0.5rem',
+                  overflow: 'hidden',
+                  marginBottom: '0.5rem',
+                }}>
+                  {/* header row */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 100px 40px',
+                    gap: '0.5rem',
+                    padding: '0.5rem 0.75rem',
+                    background: '#f8fafc',
+                    borderBottom: '1px solid #e2e8f0',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    color: '#64748b',
+                  }}>
+                    <div>Order Value Threshold</div>
+                    <div>Rate (%)</div>
+                    <div></div>
+                  </div>
+
+                  {formData.flexibleThresholds.map((tier, i) => {
+                    const isOpenTier = tier.limit === null;
+                    const prevLimit = i > 0 ? formData.flexibleThresholds[i - 1].limit : 0;
+                    const canRemove = !isOpenTier && formData.flexibleThresholds.length > 2;
+
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 100px 40px',
+                          gap: '0.5rem',
+                          padding: '0.5rem 0.75rem',
+                          alignItems: 'center',
+                          borderBottom: i < formData.flexibleThresholds.length - 1
+                            ? '1px solid #f1f5f9'
+                            : 'none',
+                        }}
+                      >
+                        {/* threshold column */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                          {isOpenTier ? (
+                            <span style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                              Over £{prevLimit?.toLocaleString() || '0'}
+                            </span>
+                          ) : (
+                            <>
+                              <span style={{ fontSize: '0.875rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                                Up to £
+                              </span>
+                              <input
+                                type="number"
+                                value={tier.limit}
+                                min="1"
+                                onChange={(e) => updateTier(i, 'limit', Number(e.target.value))}
+                                style={{
+                                  width: '90px',
+                                  padding: '0.375rem 0.5rem',
+                                  border: '1px solid #e2e8f0',
+                                  borderRadius: '0.375rem',
+                                  fontSize: '0.875rem',
+                                  outline: 'none',
+                                }}
+                              />
+                            </>
+                          )}
+                        </div>
+
+                        {/* rate column */}
+                        <input
+                          type="number"
+                          value={tier.rate}
+                          min="0"
+                          max="100"
+                          onChange={(e) => updateTier(i, 'rate', Number(e.target.value))}
+                          style={{
+                            width: '100%',
+                            padding: '0.375rem 0.5rem',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.875rem',
+                            outline: 'none',
+                          }}
+                        />
+
+                        {/* remove button */}
+                        {canRemove ? (
+                          <button
+                            type="button"
+                            onClick={() => removeTier(i)}
+                            title="Remove tier"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: '#ef4444',
+                              padding: '0.25rem',
+                            }}
+                          >
+                            <FiTrash2 size={14} />
+                          </button>
+                        ) : <div />}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addTier}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    background: 'none',
+                    border: '1px dashed #c7d2fe',
+                    borderRadius: '0.375rem',
+                    color: '#6366f1',
+                    fontSize: '0.875rem',
+                    padding: '0.5rem 1rem',
+                    cursor: 'pointer',
+                    width: '100%',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <FiPlus size={14} />
+                  Add Tier
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Submit button */}
+        {/* form action buttons */}
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           <button
             type="button"
@@ -472,7 +661,19 @@ function CreateAccountPage() {
               cursor: isCreating ? 'not-allowed' : 'pointer',
             }}
           >
-            {isCreating ? 'Creating...' : (
+            {isCreating ? (
+              <>
+                <div style={{
+                  width: '14px',
+                  height: '14px',
+                  border: '2px solid rgba(255,255,255,0.4)',
+                  borderTop: '2px solid white',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                }} />
+                Creating...
+              </>
+            ) : (
               <>
                 <FiSave size={16} />
                 Create Account
@@ -481,6 +682,8 @@ function CreateAccountPage() {
           </button>
         </div>
       </form>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
@@ -501,8 +704,22 @@ function FieldError({ text }) {
   );
 }
 
-// reusable form field component
-// shows label, input, icon and error message if validation fails
+// shared section card header
+function SectionHeader({ icon: Icon, title }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.5rem',
+      marginBottom: '1.25rem',
+    }}>
+      <Icon size={16} style={{ color: '#6366f1' }} />
+      <h3 style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.9rem' }}>{title}</h3>
+    </div>
+  );
+}
+
+// reusable text input field with label, icon and inline error
 function FormField({ icon: Icon, label, value, onChange, error, placeholder, type = 'text' }) {
   return (
     <div>
