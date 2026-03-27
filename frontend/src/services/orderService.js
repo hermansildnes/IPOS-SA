@@ -167,6 +167,18 @@ export async function getCatalogue() {
   }
 }
 
+// addProductStock - admin/manager only, adds new stock to an existing catalogue item
+// called when InfoPharma receives a delivery and needs to update availability
+export async function addProductStock(productId, quantity) {
+  try {
+    const result = await apiClient.post(`/catalogue/${productId}/stock`, { quantity });
+    return { success: true, product: result };
+  } catch (error) {
+    console.error('failed to add stock:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // updateOrderStatus - used by admin/manager to move an order through its lifecycle
 // dispatch step requires courier details which get stored on the order
 export async function updateOrderStatus(orderID, status, dispatchDetails = null) {
@@ -199,5 +211,6 @@ export default {
   viewPreviousOrders,
   viewAllOrders,
   getCatalogue,
+  addProductStock,
   updateOrderStatus,
 };

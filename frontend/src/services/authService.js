@@ -54,6 +54,20 @@ export async function getCurrentUser() {
   return user;
 }
 
+// changePassword - lets any logged in user update their own password
+// requires the current password to be correct before accepting the new one
+export async function changePassword(currentPassword, newPassword) {
+  try {
+    await apiClient.post('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 // isAuthenticated - quick check whether we have a token saved
 export function isAuthenticated() {
   return !!localStorage.getItem('access_token');
@@ -68,6 +82,7 @@ export default {
   merchantDisconnect,
   getCurrentUser,
   isAuthenticated,
+  changePassword,
   login,
   logout,
 };

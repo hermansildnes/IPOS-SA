@@ -322,6 +322,27 @@ export async function getMerchantBalance(merchantId) {
   }
 }
 
+// update my own contact details - merchant self-service only
+// only email and phone can be changed here; credit/discount is admin's job
+export async function updateMyContactDetails(updates) {
+  try {
+    const backendUpdates = {};
+    if (updates.contactEmail !== undefined) backendUpdates.contact_email = updates.contactEmail;
+    if (updates.contactPhone !== undefined) backendUpdates.contact_phone = updates.contactPhone;
+
+    const merchant = await apiClient.patch('/merchants/me', backendUpdates);
+    return {
+      success: true,
+      merchant: convertMerchantFromBackend(merchant),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+}
+
 // reinstate a defaulted merchant account - director only
 // requires a reason which gets stored in the audit trail on the merchant record
 export async function reinstateAccount(merchantId, reason, directorId) {
@@ -360,6 +381,7 @@ export default {
   getMerchantsByStatus,
   createMerchant,
   updateMerchant,
+  updateMyContactDetails,
   getMerchantBalance,
   reinstateAccount,
 };
