@@ -61,29 +61,27 @@ function OrderDetailPage() {
     }
   }, [orderId]);
 
-  // the four stages an order moves through
+  // the three stages an order moves through - dispatched is the final state
+  // delivered is not set by staff; it's confirmed through other means
   const statusSteps = [
     { key: ORDER_STATUS.ACCEPTED, label: 'Accepted', icon: FiCheckCircle, color: '#10b981' },
     { key: ORDER_STATUS.PROCESSING, label: 'Processing', icon: FiPackage, color: '#f59e0b' },
     { key: ORDER_STATUS.DISPATCHED, label: 'Dispatched', icon: FiTruck, color: '#3b82f6' },
-    { key: ORDER_STATUS.DELIVERED, label: 'Delivered', icon: FiCheckCircle, color: '#10b981' },
   ];
 
   const statusIndexMap = {
     accepted: 0,
     processing: 1,
     dispatched: 2,
-    delivered: 3,
   };
 
   const currentStepIndex = order ? (statusIndexMap[order.status?.toLowerCase()] ?? 0) : 0;
 
-  // figure out what status comes after the current one
+  // figure out what status comes after the current one - dispatched has no next step
   const nextStatusMap = {
     accepted: ORDER_STATUS.PROCESSING,
     processing: ORDER_STATUS.DISPATCHED,
-    dispatched: ORDER_STATUS.DELIVERED,
-    delivered: null,
+    dispatched: null,
   };
 
   const nextStatus = order ? nextStatusMap[order.status?.toLowerCase()] : null;

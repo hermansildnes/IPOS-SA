@@ -45,8 +45,9 @@ def list_orders(
                 detail="Invalid order status",
             )
 
-    # admin and manager can see the full order history across all merchants
-    if current_user.role in [UserRole.ADMIN, UserRole.MANAGER]:
+    # admin, manager and director can see the full order history across all merchants
+    # director needs this for the financial overview on their dashboard
+    if current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.DIRECTOR]:
         return service.get_all_orders(session, status_enum)
 
     # merchants can only see their own orders

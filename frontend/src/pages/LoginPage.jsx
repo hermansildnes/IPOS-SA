@@ -353,7 +353,13 @@ function LoginPage() {
                 { role: 'Admin', user: 'admin', pass: 'admin123', color: '#ef4444' },
                 { role: 'Director', user: 'director', pass: 'director123', color: '#f59e0b' },
                 { role: 'Manager', user: 'manager', pass: 'manager123', color: '#10b981' },
-                { role: 'Merchant', user: 'merchant1', pass: 'merchant123', color: '#6366f1' },  // ← FIXED
+                {
+                  role: 'Merchant',
+                  user: 'merchant1',
+                  // read the stored password in case merchant1 changed it via My Account
+                  pass: localStorage.getItem('ipos_test_pass_merchant1') || 'merchant123',
+                  color: '#6366f1',
+                },
               ].map((cred) => (
                 // Clicking a credential card auto fills the form above
                 // so testers don't have to type credentials manually

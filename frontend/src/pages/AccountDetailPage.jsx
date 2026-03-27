@@ -5,8 +5,10 @@ import {
   getMerchantById,
   getCurrentMerchant,
   updateMerchant,
+  updateMyContactDetails,
   reinstateAccount,
 } from '../services/merchantService';
+import { changePassword } from '../services/authService';
 import { STATUS_STYLES, ROLES, ACCOUNT_STATUS, DISCOUNT_TYPES } from '../utils/constants';
 import {
   FiArrowLeft,
@@ -75,6 +77,11 @@ function AccountDetailPage() {
 
   // validation errors for the flexible tier editor
   const [tierErrors, setTierErrors] = useState('');
+
+  // password change form state - only used on the merchant self-view (/my-account)
+  const [pwForm, setPwForm] = useState({ current: '', next: '', confirm: '' });
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwMessage, setPwMessage] = useState(null);
 
   useEffect(() => {
     async function loadMerchant() {
@@ -163,8 +170,9 @@ function AccountDetailPage() {
   const statusStyle = STATUS_STYLES[merchant.status] || STATUS_STYLES.normal;
   const availableCredit = (merchant.creditLimit || 0) - (merchant.currentDebt || 0);
 
-  // only admins and managers can edit merchant details
-  const canEdit = user?.role === ROLES.ADMIN || user?.role === ROLES.MANAGER;
+  // admins and managers can edit any merchant account
+  // merchants can edit their own contact details (email and phone only)
+  const canEdit = user?.role === ROLES.ADMIN || user?.role === ROLES.MANAGER || isMerchantSelfView;
 
   // only the director can reinstate a defaulted account
   const canReinstate =
@@ -226,8 +234,8 @@ function AccountDetailPage() {
 
   // save edits back to the backend
   const handleSave = async () => {
-    // validate flexible tiers before saving
-    if (formData.discountPlanType === DISCOUNT_TYPES.FLEXIBLE) {
+    // validate flexible tiers before saving (admin/manager only)
+    if (!isMerchantSelfView && formData.discountPlanType === DISCOUNT_TYPES.FLEXIBLE) {
       const err = validateTiers(formData.flexibleThresholds);
       if (err) {
         setTierErrors(err);
@@ -238,7 +246,14 @@ function AccountDetailPage() {
     setIsSaving(true);
     setMessage(null);
 
-    const result = await updateMerchant(merchant.id, formData);
+    // merchants only update their own contact details via the /merchants/me endpoint
+    // admin/manager use the full update endpoint
+    const result = isMerchantSelfView
+      ? await updateMyContactDetails({
+          contactEmail: formData.contactEmail,
+          contactPhone: formData.contactPhone,
+        })
+      : await updateMerchant(merchant.id, formData);
 
     setIsSaving(false);
 
@@ -523,20 +538,22 @@ function AccountDetailPage() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* company name and contact name: editable by admin/manager only */}
             <DetailField
               icon={FiUser}
               label="Company Name"
               value={formData.companyName}
-              isEditing={isEditing}
+              isEditing={isEditing && !isMerchantSelfView}
               onChange={(v) => setFormData({ ...formData, companyName: v })}
             />
             <DetailField
               icon={FiUser}
               label="Contact Name"
               value={formData.contactName}
-              isEditing={isEditing}
+              isEditing={isEditing && !isMerchantSelfView}
               onChange={(v) => setFormData({ ...formData, contactName: v })}
             />
+            {/* email and phone: merchants can update these themselves */}
             <DetailField
               icon={FiMail}
               label="Email"
@@ -555,7 +572,7 @@ function AccountDetailPage() {
               icon={FiMapPin}
               label="Address"
               value={formData.address}
-              isEditing={isEditing}
+              isEditing={isEditing && !isMerchantSelfView}
               onChange={(v) => setFormData({ ...formData, address: v })}
             />
           </div>
@@ -586,8 +603,8 @@ function AccountDetailPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Credit Limit</p>
-                {/* admins/managers can change the credit limit */}
-                {isEditing ? (
+                {/* admins/managers can change the credit limit - merchants cannot */}
+                {isEditing && !isMerchantSelfView ? (
                   <input
                     type="number"
                     value={formData.creditLimit}
@@ -620,10 +637,10 @@ function AccountDetailPage() {
                 </p>
               </div>
 
-              {/* account status - managers and admins can change this */}
+              {/* account status - managers and admins can change this, never the merchant themselves */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Account Status</p>
-                {isEditing && canEdit ? (
+                {isEditing && !isMerchantSelfView ? (
                   <select
                     value={formData.accountStatus}
                     onChange={(e) => setFormData({ ...formData, accountStatus: e.target.value })}
@@ -672,8 +689,8 @@ function AccountDetailPage() {
             </div>
           </div>
 
-          {/* discount plan card */}
-          <div style={{
+          {/* discount plan card - hidden on the merchant self-view, managed by admin */}
+          {!isMerchantSelfView && <div style={{
             background: 'white',
             borderRadius: '0.75rem',
             border: '1px solid #e2e8f0',
@@ -931,7 +948,7 @@ function AccountDetailPage() {
                 </div>
               )}
             </div>
-          </div>
+          </div>}
         </div>
       </div>
 
@@ -1062,6 +1079,130 @@ function AccountDetailPage() {
                 Confirm Reinstatement
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* password change section - only shown to the merchant on their own account page */}
+      {isMerchantSelfView && (
+        <div style={{
+          background: 'white',
+          borderRadius: '0.75rem',
+          border: '1px solid #e2e8f0',
+          padding: '1.5rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+            <FiCreditCard size={16} style={{ color: '#6366f1' }} />
+            <h3 style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.9rem' }}>Change Password</h3>
+          </div>
+
+          {pwMessage && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              background: pwMessage.type === 'success' ? '#dcfce7' : '#fee2e2',
+              border: `1px solid ${pwMessage.type === 'success' ? '#86efac' : '#fecaca'}`,
+              color: pwMessage.type === 'success' ? '#16a34a' : '#dc2626',
+              padding: '0.625rem 1rem',
+              borderRadius: '0.5rem',
+              fontSize: '0.875rem',
+              marginBottom: '1rem',
+            }}>
+              {pwMessage.type === 'success' ? <FiCheckCircle size={14} /> : <FiAlertCircle size={14} />}
+              {pwMessage.text}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem', maxWidth: '360px' }}>
+            {['Current Password', 'New Password', 'Confirm New Password'].map((label, i) => {
+              const keys = ['current', 'next', 'confirm'];
+              return (
+                <div key={label}>
+                  <label style={{ display: 'block', fontSize: '0.8rem', color: '#64748b', marginBottom: '0.3rem' }}>
+                    {label}
+                  </label>
+                  <input
+                    type="password"
+                    value={pwForm[keys[i]]}
+                    onChange={(e) => setPwForm({ ...pwForm, [keys[i]]: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '0.5rem 0.75rem',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              );
+            })}
+
+            <button
+              onClick={async () => {
+                if (!pwForm.current || !pwForm.next) {
+                  setPwMessage({ type: 'error', text: 'Please fill in all password fields' });
+                  return;
+                }
+                if (pwForm.next !== pwForm.confirm) {
+                  setPwMessage({ type: 'error', text: 'New passwords do not match' });
+                  return;
+                }
+                setPwLoading(true);
+                setPwMessage(null);
+                const result = await changePassword(pwForm.current, pwForm.next);
+                setPwLoading(false);
+                if (result.success) {
+                  setPwForm({ current: '', next: '', confirm: '' });
+                  // update the stored test credential so LoginPage reflects the new password
+                  // only relevant during dev/testing - won't affect production
+                  if (user?.username) {
+                    localStorage.setItem(`ipos_test_pass_${user.username}`, pwForm.next);
+                  }
+                  setPwMessage({ type: 'success', text: 'Password updated successfully' });
+                  setTimeout(() => setPwMessage(null), 4000);
+                } else {
+                  setPwMessage({ type: 'error', text: result.error || 'Failed to update password' });
+                }
+              }}
+              disabled={pwLoading}
+              style={{
+                alignSelf: 'flex-start',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: pwLoading
+                  ? '#cbd5e1'
+                  : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                padding: '0.5rem 1.25rem',
+                fontSize: '0.875rem',
+                fontWeight: '600',
+                cursor: pwLoading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {pwLoading ? (
+                <>
+                  <div style={{
+                    width: '12px', height: '12px',
+                    border: '2px solid rgba(255,255,255,0.4)',
+                    borderTop: '2px solid white',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite',
+                  }} />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <FiSave size={14} />
+                  Update Password
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}

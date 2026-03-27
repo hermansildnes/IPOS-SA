@@ -176,15 +176,23 @@ def get_merchant_by_id(session: Session, merchant_id: UUID) -> Merchant:
 
 
 def get_all_merchants(session: Session, status: str | None = None):
-    """Get all merchants."""
-    from merchants.models import Merchant
-    from sqlmodel import select
-
+    """Get all merchants, each enriched with their live calculated balance.
+    The Merchant model doesn't store a running debt total, so we compute it here
+    from the orders/payments tables to make sure the accounts list shows accurate numbers."""
     statement = select(Merchant)
     if status:
         statement = statement.where(Merchant.account_status == status)
 
-    return list(session.exec(statement).all())
+    merchants = list(session.exec(statement).all())
+
+    result = []
+    for m in merchants:
+        balance = calculate_merchant_balance(session, m.id)
+        data = m.model_dump()
+        # inject the live calculated balance so the frontend can show accurate debt
+        data["outstanding_balance"] = float(balance.outstanding_balance)
+        result.append(data)
+    return result
 
 
 def update_merchant(
@@ -192,7 +200,14 @@ def update_merchant(
 ) -> Merchant:
     merchant = get_merchant_by_id(session, merchant_id)
 
+    # grab tiers from the pydantic model before model_dump converts them to plain dicts
+    # model_dump loses the FlexibleTier type, so attribute access (tier.up_to) would fail
+    fields_set = merchant_in.model_fields_set
+    new_tiers = merchant_in.flexible_thresholds if "flexible_thresholds" in fields_set else None
+
     update_data = merchant_in.model_dump(exclude_unset=True)
+    # remove flexible_thresholds from the dict since we already captured it above
+    update_data.pop("flexible_thresholds", None)
 
     if "credit_limit" in update_data and update_data["credit_limit"] < 0:
         raise HTTPException(
@@ -209,9 +224,6 @@ def update_merchant(
 
     if update_data.get("discount_plan_type") == DiscountPlanType.FLEXIBLE:
         update_data["fixed_discount_rate"] = None
-
-    # handle flexible tiers separately - pop them from the dict so setattr doesn't try to assign them
-    new_tiers = update_data.pop("flexible_thresholds", None)
 
     for key, value in update_data.items():
         setattr(merchant, key, value)
@@ -240,7 +252,9 @@ def calculate_merchant_balance(
 
     orders = session.exec(select(Order).where(Order.merchant_id == merchant_id)).all()
 
-    total_orders = sum((order.total for order in orders), Decimal("0.00"))
+    # use amount_due not total - the merchant owes the post-discount figure,
+    # and the credit check in orders/service uses the same field so they stay in sync
+    total_orders = sum((order.amount_due for order in orders), Decimal("0.00"))
 
     payments = session.exec(
         select(Payment).where(Payment.merchant_id == merchant_id)

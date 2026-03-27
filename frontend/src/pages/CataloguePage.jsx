@@ -8,7 +8,7 @@ import {
   FiPlus,
   FiMinus,
 } from 'react-icons/fi';
-import { getCatalogue } from '../services/orderService';
+import { getCatalogue, addProductStock } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import reportService from '../services/reportService';
 
@@ -27,9 +27,28 @@ function CataloguePage() {
   const [lowStockCount, setLowStockCount] = useState(0);
   const [showLowStockBanner, setShowLowStockBanner] = useState(true);
 
+  // which product's "add stock" form is open (null = none)
+  const [stockModalId, setStockModalId] = useState(null);
+  const [stockQty, setStockQty] = useState('');
+  const [stockSaving, setStockSaving] = useState(false);
+  const [stockMessage, setStockMessage] = useState(null);
+
   // load products on mount
   useEffect(() => {
     loadProducts();
+  }, []);
+
+  // re-fetch the catalogue whenever the tab becomes visible again
+  // this means if an order was just placed, the stock counts will refresh
+  // when the merchant navigates back here without doing a full page reload
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        loadProducts();
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   // check for low stock items - admin/manager only
@@ -140,6 +159,27 @@ function CataloguePage() {
   );
 
   const isStaff = user?.role === 'admin' || user?.role === 'manager';
+
+  // submit the stock increase for a specific product
+  async function handleAddStock(productId) {
+    const qty = parseInt(stockQty, 10);
+    if (!qty || qty <= 0) {
+      setStockMessage({ id: productId, type: 'error', text: 'Enter a valid quantity' });
+      return;
+    }
+    setStockSaving(true);
+    setStockMessage(null);
+    const result = await addProductStock(productId, qty);
+    setStockSaving(false);
+    if (result.success) {
+      // refresh the product list so the updated stock count shows immediately
+      await loadProducts();
+      setStockModalId(null);
+      setStockQty('');
+    } else {
+      setStockMessage({ id: productId, type: 'error', text: result.error || 'Failed to add stock' });
+    }
+  }
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -375,6 +415,15 @@ function CataloguePage() {
               cartQuantity={getCartQuantity(product.id)}
               onAddToCart={() => addToCart(product)}
               onUpdateQuantity={(qty) => updateCartQuantity(product.id, qty)}
+              isStaff={isStaff}
+              stockModalOpen={stockModalId === product.id}
+              onOpenStockModal={() => { setStockModalId(product.id); setStockQty(''); setStockMessage(null); }}
+              onCloseStockModal={() => { setStockModalId(null); setStockQty(''); setStockMessage(null); }}
+              stockQty={stockQty}
+              onStockQtyChange={setStockQty}
+              onSubmitStock={() => handleAddStock(product.id)}
+              stockSaving={stockSaving}
+              stockError={stockMessage?.id === product.id ? stockMessage : null}
             />
           ))}
         </div>
@@ -397,7 +446,11 @@ function CataloguePage() {
 }
 
 // Product Card Component
-function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
+function ProductCard({
+  product, cartQuantity, onAddToCart, onUpdateQuantity,
+  isStaff, stockModalOpen, onOpenStockModal, onCloseStockModal,
+  stockQty, onStockQtyChange, onSubmitStock, stockSaving, stockError,
+}) {
   const isLowStock = product.stockQuantity < product.minStockLevel;
   const isOutOfStock = product.stockQuantity === 0;
 
@@ -581,6 +634,89 @@ function ProductCard({ product, cartQuantity, onAddToCart, onUpdateQuantity }) {
             >
               <FiPlus size={18} />
             </button>
+          </div>
+        )}
+
+        {/* add stock section - only visible to admin and manager */}
+        {isStaff && (
+          <div style={{ marginTop: '0.75rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem' }}>
+            {!stockModalOpen ? (
+              <button
+                onClick={onOpenStockModal}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  background: 'white',
+                  color: '#6366f1',
+                  border: '1px solid #6366f1',
+                  borderRadius: '0.5rem',
+                  padding: '0.5rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                <FiPlus size={14} />
+                Add Stock
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    value={stockQty}
+                    onChange={(e) => onStockQtyChange(e.target.value)}
+                    placeholder="Qty to add"
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem 0.625rem',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.875rem',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    onClick={onSubmitStock}
+                    disabled={stockSaving}
+                    style={{
+                      background: stockSaving ? '#cbd5e1' : '#6366f1',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      padding: '0.5rem 0.875rem',
+                      fontSize: '0.8rem',
+                      fontWeight: '600',
+                      cursor: stockSaving ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {stockSaving ? '...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={onCloseStockModal}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      padding: '0.25rem',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                {stockError && (
+                  <p style={{ fontSize: '0.75rem', color: '#dc2626' }}>
+                    {stockError.text}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlmodel import Session, select
 
 from catalogue.models import Product
-from merchants.models import Merchant, DiscountPlanType, DiscountTier
+from merchants.models import Merchant, DiscountPlanType, DiscountTier, Payment
 from orders.models import Order, OrderItem, Invoice, OrderStatus
 
 
@@ -149,9 +149,27 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
     discount_amount = _calculate_discount(session, merchant, subtotal)
     amount_due = subtotal - discount_amount
 
-    # basic credit limit check before creating the order
-    if amount_due > merchant.credit_limit:
-        raise ValueError("Order exceeds merchant credit limit")
+    # hard credit limit check - the brief says orders can only go through if the
+    # merchant has enough available credit, so we need to factor in existing debt
+    # available credit = credit limit minus whatever they already owe from past orders
+    existing_orders = session.exec(
+        select(Order).where(Order.merchant_id == merchant_id)
+    ).all()
+    total_owed = sum((o.amount_due for o in existing_orders), Decimal("0.00"))
+
+    existing_payments = session.exec(
+        select(Payment).where(Payment.merchant_id == merchant_id)
+    ).all()
+    total_paid = sum((p.amount for p in existing_payments), Decimal("0.00"))
+
+    outstanding = total_owed - total_paid
+    available_credit = merchant.credit_limit - outstanding
+
+    if amount_due > available_credit:
+        raise ValueError(
+            f"Order total of £{float(amount_due):.2f} exceeds your available credit "
+            f"of £{float(available_credit):.2f}"
+        )
 
     # create the main order row first
     order = Order(
@@ -259,10 +277,11 @@ def update_order_status(
     current_status = order.status
 
     # only allow sensible forward transitions through the workflow
+    # dispatched is the final state staff can set - delivery is confirmed externally
     valid_transitions = {
         OrderStatus.ACCEPTED: [OrderStatus.PROCESSING],
         OrderStatus.PROCESSING: [OrderStatus.DISPATCHED],
-        OrderStatus.DISPATCHED: [OrderStatus.DELIVERED],
+        OrderStatus.DISPATCHED: [],
         OrderStatus.DELIVERED: [],
     }
 

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlmodel import Session, select
 
 from auth.models import User, UserRole
@@ -34,12 +34,54 @@ class ReinstateRequest(BaseModel):
     director_id: UUID | None = None
 
 
+# merchants can update their own contact details but not credit limits or discount plans
+class MerchantSelfUpdate(BaseModel):
+    contact_email: EmailStr | None = None
+    contact_phone: str | None = None
+
+
 router = APIRouter()
 
 
 # Leon: Added this endpoint so merchant users can get their own merchant ID.
 # Frontend needs merchant.id (not user.id) to fetch orders since Order.merchant_id
 # references Merchant.id, not User.id. Without this, Orders page shows 0 orders.
+@router.patch("/me")
+def update_my_merchant(
+    update_in: MerchantSelfUpdate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Let a merchant update their own contact details (email and phone only).
+    Credit limits and discount plans can only be changed by admin/manager."""
+    if current_user.role != UserRole.MERCHANT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only merchants can use this endpoint",
+        )
+
+    merchant = session.exec(
+        select(Merchant).where(Merchant.user_id == current_user.id)
+    ).first()
+
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Merchant account not found"
+        )
+
+    if update_in.contact_email is not None:
+        merchant.contact_email = update_in.contact_email
+    if update_in.contact_phone is not None:
+        merchant.contact_phone = update_in.contact_phone
+
+    merchant.updated_at = datetime.now(timezone.utc)
+    session.add(merchant)
+    session.commit()
+    session.refresh(merchant)
+
+    return merchant_to_read(session, merchant)
+
+
 @router.get("/me")
 def get_my_merchant(
     current_user: User = Depends(get_current_user),
@@ -70,10 +112,11 @@ def list_merchants(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+    # director needs read access to the merchant list for accounts page and reports
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.DIRECTOR]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin or manager access required",
+            detail="Admin, manager or director access required",
         )
 
     from merchants.service import get_all_merchants
