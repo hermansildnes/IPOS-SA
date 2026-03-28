@@ -80,9 +80,10 @@ class FlexibleTier(BaseModel):
     """A single tier in a flexible discount plan.
     Either bounded tier or above must be set
     """
-    up_to: Decimal | None = None    # max order value for this tier (None = open-ended)
-    above: Decimal | None = None    # lower bound for the final open-ended tier
-    rate: Decimal                   # discount % to apply
+
+    up_to: Decimal | None = None  # max order value for this tier (None = open-ended)
+    above: Decimal | None = None  # lower bound for the final open-ended tier
+    rate: Decimal  # discount % to apply
 
 
 class MerchantCreate(BaseModel):
@@ -115,7 +116,8 @@ class MerchantUpdate(BaseModel):
 
 class TierRead(BaseModel):
     """A single flexible discount tier as returned in MerchantRead responses."""
-    up_to: Decimal | None   # None = open-ended final tier
+
+    up_to: Decimal | None  # None = open-ended final tier
     rate: Decimal
 
 

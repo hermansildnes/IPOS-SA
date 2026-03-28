@@ -150,7 +150,7 @@ def get_all_invoices_report(
     session: Session = Depends(get_session),
 ):
     """
-     All invoices raised by InfoPharma Ltd against merchants for a perod
+    All invoices raised by InfoPharma Ltd against merchants for a perod
     """
     if start_date > end_date:
         raise HTTPException(

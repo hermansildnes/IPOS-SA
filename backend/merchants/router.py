@@ -43,7 +43,6 @@ class MerchantSelfUpdate(BaseModel):
 router = APIRouter()
 
 
-
 @router.patch("/me")
 def update_my_merchant(
     update_in: MerchantSelfUpdate,
@@ -78,6 +77,7 @@ def update_my_merchant(
     session.refresh(merchant)
 
     return merchant_to_read(session, merchant)
+
 
 # Leon: Added this endpoint so merchant users can get their own merchant ID.
 # Frontend needs merchant.id (not user.id) to fetch orders since Order.merchant_id

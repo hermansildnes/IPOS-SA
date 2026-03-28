@@ -14,7 +14,6 @@ from merchants.models import (
     Payment,
     DiscountPlanType,
     DiscountTier,
-    FlexibleTier,
     TierRead,
     InvoiceCreate,
 )
@@ -92,7 +91,10 @@ def create_merchant(session: Session, merchant_in: MerchantCreate) -> Merchant:
     session.flush()  # get merchant.id before creating tiers
 
     # create discount tiers if a flexible plan was specified
-    if merchant_in.discount_plan_type == DiscountPlanType.FLEXIBLE and merchant_in.flexible_thresholds:
+    if (
+        merchant_in.discount_plan_type == DiscountPlanType.FLEXIBLE
+        and merchant_in.flexible_thresholds
+    ):
         _upsert_discount_tiers(session, merchant.id, merchant_in.flexible_thresholds)
 
     session.commit()
@@ -203,7 +205,9 @@ def update_merchant(
     # grab tiers from the pydantic model before model_dump converts them to plain dicts
     # model_dump loses the FlexibleTier type, so attribute access (tier.up_to) would fail
     fields_set = merchant_in.model_fields_set
-    new_tiers = merchant_in.flexible_thresholds if "flexible_thresholds" in fields_set else None
+    new_tiers = (
+        merchant_in.flexible_thresholds if "flexible_thresholds" in fields_set else None
+    )
 
     update_data = merchant_in.model_dump(exclude_unset=True)
     # remove flexible_thresholds from the dict since we already captured it above

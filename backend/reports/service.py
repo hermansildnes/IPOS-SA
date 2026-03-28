@@ -339,7 +339,7 @@ def get_all_invoices_report(
     end_date: date,
 ) -> AllInvoicesReport:
     """
-   All invoices raised by InfoPharma for a given period
+    All invoices raised by InfoPharma for a given period
     """
     invoices = session.exec(
         select(Invoice)

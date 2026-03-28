@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
-# Turnover Report 
+# Turnover Report
 
 
 class TurnoverItem(BaseModel):
@@ -23,7 +23,7 @@ class TurnoverReport(BaseModel):
     grand_total_revenue: Decimal
 
 
-# Merchant Orders Summary 
+# Merchant Orders Summary
 
 
 class OrderSummaryRow(BaseModel):
@@ -56,7 +56,7 @@ class MerchantOrdersSummaryReport(BaseModel):
     dispatched_orders: int
 
 
-# Merchant Orders Detailed 
+# Merchant Orders Detailed
 
 
 class DetailedOrderItem(BaseModel):
@@ -114,6 +114,7 @@ class LowStockReport(BaseModel):
 
 # Merchant Invoices Report
 
+
 class MerchantInvoiceRow(BaseModel):
     invoice_id: UUID
     order_id: UUID
@@ -138,7 +139,7 @@ class MerchantInvoicesReport(BaseModel):
     total_invoices: int
 
 
-# All Invoices Report 
+# All Invoices Report
 
 
 class AllInvoiceRow(BaseModel):
