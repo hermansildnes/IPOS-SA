@@ -9,9 +9,9 @@ import {
   FiCheckCircle,
 } from 'react-icons/fi';
 import { viewPreviousOrders, viewAllOrders } from '../services/orderService';
+import { getCurrentMerchant } from '../services/merchantService';
 import { useAuth } from '../context/AuthContext';
 import { ORDER_STATUS, ORDER_STATUS_STYLES, ROLES } from '../utils/constants';
-import { apiClient } from '../services/apiClient';
 
 function OrdersPage() {
   const navigate = useNavigate();
@@ -42,7 +42,7 @@ function OrdersPage() {
   useEffect(() => {
     async function loadMerchantId() {
       try {
-        const merchant = await apiClient.get('/merchants/me');
+        const merchant = await getCurrentMerchant();
         setMerchantId(merchant.id);
       } catch (err) {
         console.error('Failed to load merchant ID:', err);
