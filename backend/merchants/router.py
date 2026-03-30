@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlmodel import Session, select
 
+from audit.models import AuditAction
+from audit.service import log_action
 from auth.models import User, UserRole
 from auth.service import get_current_user
 from core.database import get_session
@@ -34,7 +36,6 @@ class ReinstateRequest(BaseModel):
     director_id: UUID | None = None
 
 
-# merchants can update their own contact details but not credit limits or discount plans
 class MerchantSelfUpdate(BaseModel):
     contact_email: EmailStr | None = None
     contact_phone: str | None = None
@@ -46,11 +47,10 @@ router = APIRouter()
 @router.patch("/me")
 def update_my_merchant(
     update_in: MerchantSelfUpdate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """Let a merchant update their own contact details (email and phone only).
-    Credit limits and discount plans can only be changed by admin/manager."""
     if current_user.role != UserRole.MERCHANT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -76,18 +76,26 @@ def update_my_merchant(
     session.commit()
     session.refresh(merchant)
 
+    log_action(
+        session,
+        action=AuditAction.MERCHANT_UPDATED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="merchant",
+        target_id=str(merchant.id),
+        target_label=merchant.company_name,
+        detail={"updated_fields": list(update_in.model_fields_set)},
+        ip_address=request.client.host,
+    )
+
     return merchant_to_read(session, merchant)
 
 
-# Leon: Added this endpoint so merchant users can get their own merchant ID.
-# Frontend needs merchant.id (not user.id) to fetch orders since Order.merchant_id
-# references Merchant.id, not User.id. Without this, Orders page shows 0 orders.
 @router.get("/me")
 def get_my_merchant(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """Get merchant account for the current logged in user."""
     if current_user.role != UserRole.MERCHANT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -112,7 +120,6 @@ def list_merchants(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    # director needs read access to the merchant list for accounts page and reports
     if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.DIRECTOR]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -120,13 +127,13 @@ def list_merchants(
         )
 
     from merchants.service import get_all_merchants
-
     return get_all_merchants(session, account_status)
 
 
 @router.post("", response_model=MerchantRead)
 def create_merchant(
     merchant_in: MerchantCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -134,7 +141,24 @@ def create_merchant(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
         )
+
     merchant = create_merchant_service(session, merchant_in)
+
+    log_action(
+        session,
+        action=AuditAction.MERCHANT_CREATED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="merchant",
+        target_id=str(merchant.id),
+        target_label=merchant.company_name,
+        detail={
+            "account_number": merchant.account_number,
+            "discount_plan": merchant.discount_plan_type,
+        },
+        ip_address=request.client.host,
+    )
+
     return merchant_to_read(session, merchant)
 
 
@@ -152,6 +176,7 @@ def get_merchant(
 def update_merchant(
     merchant_id: UUID,
     merchant_in: MerchantUpdate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -160,7 +185,30 @@ def update_merchant(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin or manager access required",
         )
+
     merchant = update_merchant_service(session, merchant_id, merchant_in)
+
+    changed = merchant_in.model_dump(exclude_unset=True)
+    changed.pop("flexible_thresholds", None)
+
+    action = AuditAction.MERCHANT_UPDATED
+    if "credit_limit" in changed:
+        action = AuditAction.MERCHANT_CREDIT_LIMIT_CHANGED
+    elif "discount_plan_type" in changed or "fixed_discount_rate" in changed:
+        action = AuditAction.MERCHANT_DISCOUNT_PLAN_CHANGED
+
+    log_action(
+        session,
+        action=action,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="merchant",
+        target_id=str(merchant_id),
+        target_label=merchant.company_name,
+        detail={k: str(v) for k, v in changed.items()},
+        ip_address=request.client.host,
+    )
+
     return merchant_to_read(session, merchant)
 
 
@@ -168,10 +216,10 @@ def update_merchant(
 def reinstate_merchant(
     merchant_id: UUID,
     reinstate_in: ReinstateRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    # only director can reinstate a defaulted account - per the brief
     if current_user.role != UserRole.DIRECTOR:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -196,7 +244,6 @@ def reinstate_merchant(
             detail="Account is not in default - reinstatement not required",
         )
 
-    # restore to normal and record the audit trail
     merchant.account_status = AccountStatus.NORMAL
     merchant.reinstated_by = current_user.id
     merchant.reinstated_at = datetime.now(timezone.utc)
@@ -206,6 +253,18 @@ def reinstate_merchant(
     session.add(merchant)
     session.commit()
     session.refresh(merchant)
+
+    log_action(
+        session,
+        action=AuditAction.MERCHANT_ACCOUNT_RESTORED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="merchant",
+        target_id=str(merchant_id),
+        target_label=merchant.company_name,
+        detail={"reason": reinstate_in.reason.strip()},
+        ip_address=request.client.host,
+    )
 
     return merchant_to_read(session, merchant)
 
@@ -219,7 +278,6 @@ def get_merchant_balance(
     return calculate_merchant_balance_service(session, merchant_id)
 
 
-# Leon: Original endpoint returned wrong data leading to bugs when i ran server.
 @router.get("/{merchant_id}/orders")
 def get_merchant_orders(
     merchant_id: UUID,
@@ -227,11 +285,9 @@ def get_merchant_orders(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    # Import orders service
     from orders.service import get_orders_by_merchant
     from orders.models import OrderStatus
 
-    # Convert string status to enum if provided
     status_enum = None
     if status:
         try:
@@ -246,6 +302,7 @@ def get_merchant_orders(
 def create_invoice(
     merchant_id: UUID,
     invoice_in: InvoiceCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -254,7 +311,25 @@ def create_invoice(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin or manager access required",
         )
-    return create_invoice_service(session, merchant_id, invoice_in)
+
+    invoice = create_invoice_service(session, merchant_id, invoice_in)
+
+    log_action(
+        session,
+        action=AuditAction.INVOICE_GENERATED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="invoice",
+        target_id=str(invoice.id),
+        target_label=str(invoice.id)[:8].upper(),
+        detail={
+            "order_id": str(invoice_in.order_id),
+            "amount_due": str(invoice_in.amount_due),
+        },
+        ip_address=request.client.host,
+    )
+
+    return invoice
 
 
 @router.get("/{merchant_id}/invoices")

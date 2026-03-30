@@ -9,6 +9,7 @@ import {
   FiLogOut,
   FiPackage,
   FiUser,
+  FiShield,
 } from 'react-icons/fi';
 import logo from '../../assets/logo.png';
 
@@ -56,6 +57,12 @@ const NAV_ITEMS = [
     path: '/reports',
     // Only management roles can view reports
     roles: ['admin', 'director', 'manager'],
+  },
+  {
+  label: 'Audit Log',
+  icon: FiShield,
+  path: '/audit',
+  roles: ['admin', 'manager'],
   },
   {
     label: 'Applications',

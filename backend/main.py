@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from audit.router import router as audit_router
 from auth.router import router as auth_router
 from catalogue.router import router as catalogue_router
 from commercial_applications.router import router as commercial_applications_router
@@ -43,6 +44,7 @@ app.include_router(
     tags=["Commercial Applications"],
 )
 app.include_router(reports_router, prefix="/api/reports", tags=["Reports"])
+app.include_router(audit_router, prefix="/api/audit", tags=["Audit"])
 
 
 @app.get("/health")

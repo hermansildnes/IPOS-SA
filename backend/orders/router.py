@@ -1,26 +1,17 @@
-"""
-Orders router - defines HTTP endpoints for order operations.
-each endpoint is a thin wrapper that:
-1. validates request data
-2. calls the appropriate service function
-3. returns the response
-"""
-
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import Session, select
 
+from audit.models import AuditAction
+from audit.service import log_action
 from auth.models import User, UserRole
 from auth.service import get_current_user
 from core.database import get_session
 from orders import service
-from orders.models import CreateOrderRequest, UpdateOrderStatusRequest
+from orders.models import CreateOrderRequest, OrderStatus, UpdateOrderStatusRequest
 
 router = APIRouter()
-
-
-# Endpoints
 
 
 @router.get("")
@@ -29,12 +20,8 @@ def list_orders(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """List all orders for admin/manager, or own orders for merchant."""
     from merchants.models import Merchant
-    from orders.models import OrderStatus
 
-    # if a status filter was provided, try converting it into the enum first
-    # this keeps the router responsible for basic input validation
     status_enum = None
     if status:
         try:
@@ -45,14 +32,10 @@ def list_orders(
                 detail="Invalid order status",
             )
 
-    # admin, manager and director can see the full order history across all merchants
-    # director needs this for the financial overview on their dashboard
     if current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.DIRECTOR]:
         return service.get_all_orders(session, status_enum)
 
-    # merchants can only see their own orders
     if current_user.role == UserRole.MERCHANT:
-        # look up the merchant account linked to this logged in user
         merchant = session.exec(
             select(Merchant).where(Merchant.user_id == current_user.id)
         ).first()
@@ -63,33 +46,25 @@ def list_orders(
                 detail="Merchant account not found for this user",
             )
 
-        # call the merchant-specific service function
         return service.get_orders_by_merchant(session, merchant.id, status_enum)
 
-    # any other role should not be able to access this endpoint
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Access denied",
-    )
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_order(
     body: CreateOrderRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
+    from merchants.models import Merchant
 
-    # only merchants can place orders
     if current_user.role != UserRole.MERCHANT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only merchants can place orders",
         )
-
-    # Leon: Get the actual merchant ID from the user's linked merchant account
-    # because orders reference Merchant.id, not User.id
-    from merchants.models import Merchant
 
     merchant = session.exec(
         select(Merchant).where(Merchant.user_id == current_user.id)
@@ -101,17 +76,30 @@ def create_order(
             detail="Merchant account not found for this user",
         )
 
-    merchant_id = merchant.id
-
     try:
-        # convert request items to the simple service-layer format
         items = [
             {"product_id": item.product_id, "quantity": item.quantity}
             for item in body.items
         ]
 
-        # call service to create the order, reduce stock, and generate invoice
-        order = service.create_order(session, merchant_id, items)
+        order = service.create_order(session, merchant.id, items)
+
+        log_action(
+            session,
+            action=AuditAction.ORDER_PLACED,
+            performed_by_id=current_user.id,
+            performed_by_username=current_user.username,
+            target_type="order",
+            target_id=str(order.id),
+            target_label=str(order.id)[:8].upper(),
+            detail={
+                "item_count": len(items),
+                "total": str(order.total),
+                "discount": str(order.discount_amount),
+                "amount_due": str(order.amount_due),
+            },
+            ip_address=request.client.host,
+        )
 
         return {
             "order_id": str(order.id),
@@ -120,9 +108,8 @@ def create_order(
             "discount": float(order.discount_amount),
             "amount_due": float(order.amount_due),
         }
+
     except ValueError as e:
-        # validation error from service
-        # e.g. insufficient stock, over credit limit, empty order, etc.
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
@@ -132,10 +119,8 @@ def get_order_by_id(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """Get order details by ID."""
     from merchants.models import Merchant
 
-    # fetch the richer serialised order response from the service layer
     order = service.get_order(session, order_id)
 
     if not order:
@@ -143,9 +128,7 @@ def get_order_by_id(
             status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
         )
 
-    # merchants can only view their own orders
     if current_user.role == UserRole.MERCHANT:
-        # get the merchant account linked to this user
         merchant = session.exec(
             select(Merchant).where(Merchant.user_id == current_user.id)
         ).first()
@@ -163,11 +146,10 @@ def get_order_by_id(
 def update_order_status(
     order_id: UUID,
     body: UpdateOrderStatusRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-
-    # only admin/manager can update order status
     if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -175,11 +157,8 @@ def update_order_status(
         )
 
     try:
-        # if the caller did not explicitly provide dispatched_by,
-        # default to the current logged in admin/manager
         dispatched_by = body.dispatched_by or current_user.id
 
-        # call service to validate the transition and apply the update
         order = service.update_order_status(
             session,
             order_id,
@@ -190,12 +169,34 @@ def update_order_status(
             body.expected_delivery,
         )
 
+        action = AuditAction.ORDER_STATUS_CHANGED
+        if body.status == OrderStatus.DISPATCHED:
+            action = AuditAction.ORDER_DISPATCHED
+        elif body.status == OrderStatus.DELIVERED:
+            action = AuditAction.ORDER_DELIVERED
+
+        detail = {"new_status": body.status.value}
+        if body.status == OrderStatus.DISPATCHED:
+            detail["courier"] = body.courier
+            detail["courier_ref"] = body.courier_ref
+            detail["expected_delivery"] = str(body.expected_delivery)
+
+        log_action(
+            session,
+            action=action,
+            performed_by_id=current_user.id,
+            performed_by_username=current_user.username,
+            target_type="order",
+            target_id=str(order_id),
+            detail=detail,
+            ip_address=request.client.host,
+        )
+
         return {
             "message": "Order status updated successfully",
             "order_id": str(order.id),
             "new_status": order.status,
         }
+
     except ValueError as e:
-        # validation error
-        # e.g. invalid transition or missing dispatch details
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
