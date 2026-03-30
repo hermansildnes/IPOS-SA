@@ -1,18 +1,17 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import Session
 
-from auth.service import get_current_user
+from audit.models import AuditAction
+from audit.service import log_action
 from auth.models import User, UserRole
-from core.database import get_session
+from auth.service import get_current_user
 from catalogue import service
 from catalogue.models import AddStockRequest, ProductCreate, ProductUpdate
+from core.database import get_session
 
 router = APIRouter()
-
-
-# Endpoints
 
 
 @router.get("")
@@ -46,47 +45,98 @@ def get_product(product_id: UUID, session: Session = Depends(get_session)):
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_product(
     body: ProductCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
         )
-    return service.create_product(body, session)
+
+    product = service.create_product(body, session)
+
+    log_action(
+        session,
+        action=AuditAction.PRODUCT_CREATED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="product",
+        target_id=str(product.id),
+        target_label=product.name,
+        detail={"product_code": product.product_code},
+        ip_address=request.client.host,
+    )
+
+    return product
 
 
 @router.put("/{product_id}")
 def update_product(
     product_id: UUID,
     body: ProductUpdate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
         )
-    return service.update_product(product_id, body, session)
+
+    product = service.update_product(product_id, body, session)
+
+    log_action(
+        session,
+        action=AuditAction.PRODUCT_UPDATED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="product",
+        target_id=str(product_id),
+        target_label=product.name,
+        detail={"product_code": product.product_code},
+        ip_address=request.client.host,
+    )
+
+    return product
 
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_product(
     product_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
         )
+
+    product = service.get_product(product_id, session)
     service.delete_product(product_id, session)
+
+    log_action(
+        session,
+        action=AuditAction.PRODUCT_DELETED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="product",
+        target_id=str(product_id),
+        target_label=product.name,
+        detail={"product_code": product.product_code},
+        ip_address=request.client.host,
+    )
 
 
 @router.post("/{product_id}/stock", status_code=status.HTTP_201_CREATED)
 def add_stock(
     product_id: UUID,
     body: AddStockRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -95,4 +145,19 @@ def add_stock(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin or manager access required",
         )
-    return service.add_stock(product_id, body.quantity, current_user.id, session)
+
+    product = service.add_stock(product_id, body.quantity, current_user.id, session)
+
+    log_action(
+        session,
+        action=AuditAction.STOCK_ADDED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="product",
+        target_id=str(product_id),
+        target_label=product.name,
+        detail={"quantity_added": body.quantity, "new_total": product.stock_quantity},
+        ip_address=request.client.host,
+    )
+
+    return product

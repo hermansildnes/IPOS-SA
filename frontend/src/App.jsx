@@ -12,6 +12,7 @@ import ReportsPage from './pages/ReportsPage';
 import PlaceOrderPage from './pages/PlaceOrderPage';
 import OrderDetailPage from './pages/OrderDetailPage';
 import ApplicationsPage from './pages/ApplicationsPage';
+import AuditLogPage from './pages/AuditLogPage';
 
 // Guards any route that requires the user to be logged in
 // If not logged in, redirects back to the login page
@@ -150,6 +151,15 @@ function App() {
           element={
             <RoleRoute allowedRoles={['admin', 'manager', 'director']}>
               <ReportsPage />
+            </RoleRoute>
+          }
+        />
+
+        <Route
+          path="/audit"
+          element={
+            <RoleRoute allowedRoles={['admin', 'manager']}>
+              <AuditLogPage />
             </RoleRoute>
           }
         />
