@@ -7,8 +7,10 @@ import {
   FiAlertCircle,
   FiPlus,
   FiMinus,
+  FiEdit2,
+  FiTrash2,
 } from 'react-icons/fi';
-import { getCatalogue, addProductStock } from '../services/orderService';
+import { getCatalogue, addProductStock, createProduct, updateProduct, deleteProduct } from '../services/orderService';
 import { useAuth } from '../context/AuthContext';
 import reportService from '../services/reportService';
 
@@ -32,6 +34,16 @@ function CataloguePage() {
   const [stockQty, setStockQty] = useState('');
   const [stockSaving, setStockSaving] = useState(false);
   const [stockMessage, setStockMessage] = useState(null);
+
+  // product create/edit modal state
+  const [productModal, setProductModal] = useState(null); // null or { mode: 'create'|'edit', product }
+  const [productForm, setProductForm] = useState({});
+  const [productSaving, setProductSaving] = useState(false);
+  const [productError, setProductError] = useState(null);
+
+  // delete confirmation state
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // null or product object
+  const [deleteDeleting, setDeleteDeleting] = useState(false);
 
   // load products on mount
   useEffect(() => {
@@ -181,6 +193,109 @@ function CataloguePage() {
     }
   }
 
+  // blank form for creating a new product
+  function openCreateModal() {
+    setProductForm({
+      productCode: '', name: '', description: '', packageType: '',
+      unit: '', unitsPerPack: '', packageCost: '', minStockLevel: '0', restockPercentage: '10.00',
+    });
+    setProductError(null);
+    setProductModal({ mode: 'create' });
+  }
+
+  // populate form from the existing product and open in edit mode
+  function openEditModal(product) {
+    setProductForm({
+      productCode: product.productCode,
+      name: product.name,
+      description: product.description,
+      packageType: product.packageType,
+      unit: product.unit,
+      unitsPerPack: String(product.unitsPerPack),
+      packageCost: String(product.packageCost),
+      minStockLevel: String(product.minStockLevel ?? 0),
+      restockPercentage: String(product.restockPercentage ?? '10.00'),
+    });
+    setProductError(null);
+    setProductModal({ mode: 'edit', product });
+  }
+
+  // submit either a create or update depending on the modal mode
+  async function handleProductSubmit() {
+    setProductError(null);
+    const payload = {
+      productCode: productForm.productCode?.trim(),
+      name: productForm.name?.trim(),
+      description: productForm.description?.trim(),
+      packageType: productForm.packageType?.trim(),
+      unit: productForm.unit?.trim(),
+      unitsPerPack: parseInt(productForm.unitsPerPack, 10),
+      packageCost: parseFloat(productForm.packageCost),
+      minStockLevel: parseInt(productForm.minStockLevel, 10) || 0,
+      restockPercentage: parseFloat(productForm.restockPercentage) || 10.00,
+    };
+
+    // basic validation
+    if (!payload.productCode || !payload.name || !payload.packageType) {
+      setProductError('Product code, name, and package type are required');
+      return;
+    }
+    if (isNaN(payload.packageCost) || payload.packageCost <= 0) {
+      setProductError('Package cost must be a positive number');
+      return;
+    }
+    if (isNaN(payload.unitsPerPack) || payload.unitsPerPack < 1) {
+      setProductError('Units per pack must be at least 1');
+      return;
+    }
+
+    setProductSaving(true);
+    let result;
+    if (productModal.mode === 'create') {
+      result = await createProduct(payload);
+    } else {
+      result = await updateProduct(productModal.product.id, payload);
+    }
+    setProductSaving(false);
+
+    if (result.success) {
+      await loadProducts();
+      setProductModal(null);
+    } else {
+      setProductError(result.error || 'Something went wrong, try again');
+    }
+  }
+
+  // delete the product after confirming - refreshes the list after
+  async function handleDeleteProduct() {
+    if (!deleteConfirm) return;
+    setDeleteDeleting(true);
+    const result = await deleteProduct(deleteConfirm.id);
+    setDeleteDeleting(false);
+    if (result.success) {
+      await loadProducts();
+      setDeleteConfirm(null);
+    } else {
+      // just close and let the user see the error via an alert for now
+      alert(result.error || 'Failed to delete product');
+      setDeleteConfirm(null);
+    }
+  }
+
+  // buy enough stock to bring a product back up to its minimum level
+  async function handleBuyMinStock(product) {
+    const needed = product.minStockLevel - product.stockQuantity;
+    if (needed <= 0) return;
+    setStockSaving(true);
+    const result = await addProductStock(product.id, needed);
+    setStockSaving(false);
+    if (result.success) {
+      await loadProducts();
+    } else {
+      setStockMessage({ id: product.id, type: 'error', text: result.error || 'Failed to add stock' });
+    }
+  }
+
   return (
     <div style={{ padding: '1.5rem' }}>
 
@@ -242,8 +357,31 @@ function CataloguePage() {
           </p>
         </div>
 
-        {/* View Cart Button */}
-        {cart.length > 0 && (
+        {/* new product button - only show for staff who manage the catalogue */}
+        {isStaff && (
+          <button
+            onClick={openCreateModal}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.625rem',
+              padding: '0.75rem 1.25rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'pointer',
+            }}
+          >
+            <FiPlus size={18} />
+            New Product
+          </button>
+        )}
+
+        {/* view cart button - only merchants can place orders so only show for them */}
+        {!isStaff && cart.length > 0 && (
           <button
             onClick={() => navigate('/orders/new', { state: { cart } })}
             style={{
@@ -424,6 +562,9 @@ function CataloguePage() {
               onSubmitStock={() => handleAddStock(product.id)}
               stockSaving={stockSaving}
               stockError={stockMessage?.id === product.id ? stockMessage : null}
+              onEdit={() => openEditModal(product)}
+              onDelete={() => setDeleteConfirm(product)}
+              onBuyMinStock={() => handleBuyMinStock(product)}
             />
           ))}
         </div>
@@ -441,6 +582,172 @@ function CataloguePage() {
           {searchQuery && ` matching "${searchQuery}"`}
         </p>
       )}
+
+      {/* create / edit product modal */}
+      {productModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem',
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '0.75rem',
+            padding: '2rem',
+            width: '100%',
+            maxWidth: '560px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+          }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '700', color: '#0f172a', marginBottom: '1.5rem' }}>
+              {productModal.mode === 'create' ? 'New Product' : 'Edit Product'}
+            </h2>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {[
+                { label: 'Product Code', key: 'productCode', type: 'text' },
+                { label: 'Name', key: 'name', type: 'text' },
+                { label: 'Description', key: 'description', type: 'text' },
+                { label: 'Package Type', key: 'packageType', type: 'text' },
+                { label: 'Unit (e.g. tablet, ml)', key: 'unit', type: 'text' },
+                { label: 'Units per Pack', key: 'unitsPerPack', type: 'number' },
+                { label: 'Package Cost (£)', key: 'packageCost', type: 'number' },
+                { label: 'Min Stock Level', key: 'minStockLevel', type: 'number' },
+                { label: 'Restock Percentage (%)', key: 'restockPercentage', type: 'number' },
+              ].map(({ label, key, type }) => (
+                <div key={key}>
+                  <label style={{ fontSize: '0.875rem', fontWeight: '500', color: '#374151', display: 'block', marginBottom: '0.25rem' }}>
+                    {label}
+                  </label>
+                  <input
+                    type={type}
+                    value={productForm[key] ?? ''}
+                    onChange={(e) => setProductForm(prev => ({ ...prev, [key]: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '0.625rem 0.75rem',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.875rem',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {productError && (
+              <p style={{ color: '#dc2626', fontSize: '0.875rem', marginTop: '0.75rem' }}>
+                {productError}
+              </p>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setProductModal(null)}
+                disabled={productSaving}
+                style={{
+                  padding: '0.625rem 1.25rem',
+                  background: 'white',
+                  color: '#374151',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProductSubmit}
+                disabled={productSaving}
+                style={{
+                  padding: '0.625rem 1.25rem',
+                  background: productSaving ? '#cbd5e1' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  cursor: productSaving ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {productSaving ? 'Saving...' : productModal.mode === 'create' ? 'Create Product' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* delete confirmation modal */}
+      {deleteConfirm && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '1rem',
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '0.75rem',
+            padding: '2rem',
+            width: '100%',
+            maxWidth: '400px',
+          }}>
+            <h2 style={{ fontSize: '1.125rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.75rem' }}>
+              Delete Product
+            </h2>
+            <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '1.5rem' }}>
+              Are you sure you want to delete <strong>{deleteConfirm.name}</strong>? This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleteDeleting}
+                style={{
+                  padding: '0.625rem 1.25rem',
+                  background: 'white',
+                  color: '#374151',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteProduct}
+                disabled={deleteDeleting}
+                style={{
+                  padding: '0.625rem 1.25rem',
+                  background: deleteDeleting ? '#fca5a5' : '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  cursor: deleteDeleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {deleteDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -450,8 +757,9 @@ function ProductCard({
   product, cartQuantity, onAddToCart, onUpdateQuantity,
   isStaff, stockModalOpen, onOpenStockModal, onCloseStockModal,
   stockQty, onStockQtyChange, onSubmitStock, stockSaving, stockError,
+  onEdit, onDelete, onBuyMinStock,
 }) {
-  const isLowStock = product.stockQuantity < product.minStockLevel;
+  const isLowStock = product.stockQuantity < product.minStockLevel && product.minStockLevel > 0;
   const isOutOfStock = product.stockQuantity === 0;
 
   return (
@@ -479,16 +787,53 @@ function ProductCard({
           }}>
             {product.name}
           </h3>
-          <span style={{
-            fontSize: '0.75rem',
-            color: '#64748b',
-            background: '#f1f5f9',
-            padding: '0.25rem 0.5rem',
-            borderRadius: '0.25rem',
-            fontFamily: 'monospace',
-          }}>
-            {product.productCode}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{
+              fontSize: '0.75rem',
+              color: '#64748b',
+              background: '#f1f5f9',
+              padding: '0.25rem 0.5rem',
+              borderRadius: '0.25rem',
+              fontFamily: 'monospace',
+            }}>
+              {product.productCode}
+            </span>
+            {/* edit and delete buttons - only shown to staff */}
+            {isStaff && (
+              <>
+                <button
+                  onClick={onEdit}
+                  title="Edit product"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#6366f1',
+                    padding: '0.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <FiEdit2 size={15} />
+                </button>
+                <button
+                  onClick={onDelete}
+                  title="Delete product"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#dc2626',
+                    padding: '0.25rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                >
+                  <FiTrash2 size={15} />
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <p style={{
@@ -550,14 +895,70 @@ function ProductCard({
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '0.75rem', color: '#64748b' }}>In stock</div>
-            <div style={{ fontSize: '1rem', fontWeight: '600', color: '#10b981' }}>
+            <div style={{ fontSize: '1rem', fontWeight: '600', color: isOutOfStock ? '#dc2626' : isLowStock ? '#d97706' : '#10b981' }}>
               {product.stockQuantity}
             </div>
+            {/* min stock level - only meaningful to show for staff managing stock */}
+            {isStaff && product.minStockLevel > 0 && (
+              <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                min: {product.minStockLevel}
+              </div>
+            )}
           </div>
         </div>
 
+        {/* buy minimum stock button - shown to staff when stock is below the minimum threshold */}
+        {isStaff && isLowStock && (
+          <button
+            onClick={onBuyMinStock}
+            disabled={stockSaving}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              background: '#fef3c7',
+              color: '#92400e',
+              border: '1px solid #fcd34d',
+              borderRadius: '0.5rem',
+              padding: '0.5rem',
+              fontSize: '0.8rem',
+              fontWeight: '600',
+              cursor: stockSaving ? 'not-allowed' : 'pointer',
+              marginBottom: '0.75rem',
+            }}
+          >
+            <FiPlus size={14} />
+            Buy Minimum Stock (+{product.minStockLevel - product.stockQuantity} units)
+          </button>
+        )}
+
         {/* Add to Cart / Quantity Controls */}
-        {cartQuantity === 0 ? (
+        {/* staff can't order - show a red disabled button instead of the cart controls */}
+        {isStaff ? (
+          <button
+            disabled
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              background: '#dc2626',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              padding: '0.75rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'not-allowed',
+              opacity: 0.85,
+            }}
+          >
+            Only merchants can place an order
+          </button>
+        ) : cartQuantity === 0 ? (
           <button
             onClick={onAddToCart}
             disabled={isOutOfStock}

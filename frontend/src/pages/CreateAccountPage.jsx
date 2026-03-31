@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createMerchant } from '../services/merchantService';
+import { createStaffUser } from '../services/authService';
 import { DISCOUNT_TYPES } from '../utils/constants';
 import {
   FiArrowLeft,
@@ -26,6 +27,14 @@ const DEFAULT_TIERS = [
 
 function CreateAccountPage() {
   const navigate = useNavigate();
+
+  // which type of account to create - merchant gets the full form, staff gets a simpler one
+  const [accountType, setAccountType] = useState('merchant');
+
+  // staff user form state (admin/manager/director only needs username, email, password, role)
+  const [staffForm, setStaffForm] = useState({ username: '', email: '', password: '', role: 'manager' });
+  const [staffErrors, setStaffErrors] = useState({});
+  const [isCreatingStaff, setIsCreatingStaff] = useState(false);
 
   // formData holds all the field values for both merchant login and account details
   const [formData, setFormData] = useState({
@@ -170,6 +179,34 @@ function CreateAccountPage() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const handleStaffSubmit = async (e) => {
+    e.preventDefault();
+    const newErrors = {};
+    if (!staffForm.username.trim()) newErrors.username = 'Username is required';
+    else if (staffForm.username.length < 3) newErrors.username = 'Username must be at least 3 characters';
+    if (!staffForm.email.trim()) newErrors.email = 'Email is required';
+    if (!staffForm.password.trim()) newErrors.password = 'Password is required';
+    else if (staffForm.password.length < 6) newErrors.password = 'Password must be at least 6 characters';
+
+    if (Object.keys(newErrors).length > 0) {
+      setStaffErrors(newErrors);
+      setMessage({ type: 'error', text: 'Please fix the errors above' });
+      return;
+    }
+
+    setIsCreatingStaff(true);
+    setMessage(null);
+    const result = await createStaffUser(staffForm.username, staffForm.email, staffForm.password, staffForm.role);
+    setIsCreatingStaff(false);
+
+    if (result.success) {
+      setMessage({ type: 'success', text: 'Staff account created successfully! Redirecting...' });
+      setTimeout(() => navigate('/accounts'), 1500);
+    } else {
+      setMessage({ type: 'error', text: result.error || 'Failed to create account' });
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -240,12 +277,47 @@ function CreateAccountPage() {
         </button>
         <div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#0f172a' }}>
-            Create New Merchant Account
+            Create New Account
           </h1>
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            Creates the merchant login and account in one step
+            Merchant accounts require full contact and billing details; staff accounts are simpler
           </p>
         </div>
+      </div>
+
+      {/* account type selector - determines which form to show below */}
+      <div style={{
+        background: 'white',
+        borderRadius: '0.75rem',
+        border: '1px solid #e2e8f0',
+        padding: '1.25rem',
+        display: 'flex',
+        gap: '1rem',
+      }}>
+        {[
+          { key: 'merchant', label: 'Merchant Account', desc: 'External company with credit limit and discount plan' },
+          { key: 'staff', label: 'Staff Account', desc: 'Internal staff: admin, manager, or director' },
+        ].map(({ key, label, desc }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => { setAccountType(key); setMessage(null); }}
+            style={{
+              flex: 1,
+              padding: '0.875rem',
+              background: accountType === key ? '#ede9fe' : 'white',
+              border: accountType === key ? '2px solid #6366f1' : '1px solid #e2e8f0',
+              borderRadius: '0.625rem',
+              cursor: 'pointer',
+              textAlign: 'left',
+            }}
+          >
+            <p style={{ fontWeight: '600', color: accountType === key ? '#6366f1' : '#0f172a', fontSize: '0.875rem', marginBottom: '0.25rem' }}>
+              {label}
+            </p>
+            <p style={{ fontSize: '0.75rem', color: '#64748b' }}>{desc}</p>
+          </button>
+        ))}
       </div>
 
       {/* success / error banner */}
@@ -267,6 +339,45 @@ function CreateAccountPage() {
         </div>
       )}
 
+      {/* staff user creation form - only shown when accountType is staff */}
+      {accountType === 'staff' && (
+        <form onSubmit={handleStaffSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e2e8f0', padding: '1.5rem' }}>
+            <SectionHeader icon={FiUser} title="Staff Account Details" />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <FormField icon={FiUser} label="Username" value={staffForm.username} onChange={(v) => setStaffForm({ ...staffForm, username: v })} error={staffErrors.username} placeholder="e.g. jdoe_manager" />
+              <FormField icon={FiMail} label="Email" type="email" value={staffForm.email} onChange={(v) => setStaffForm({ ...staffForm, email: v })} error={staffErrors.email} placeholder="e.g. j.doe@infopharma.com" />
+              <FormField icon={FiLock} label="Password" type="password" value={staffForm.password} onChange={(v) => setStaffForm({ ...staffForm, password: v })} error={staffErrors.password} placeholder="Minimum 6 characters" />
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
+                  Role
+                </label>
+                <select
+                  value={staffForm.role}
+                  onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
+                  style={{ width: '100%', padding: '0.625rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.875rem', outline: 'none', boxSizing: 'border-box', cursor: 'pointer' }}
+                >
+                  <option value="manager">Manager</option>
+                  <option value="admin">Admin</option>
+                  <option value="director">Director</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+            <button type="button" onClick={() => navigate('/accounts')} disabled={isCreatingStaff} style={{ background: 'white', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: '0.625rem', padding: '0.625rem 1.25rem', fontSize: '0.875rem', fontWeight: '600', cursor: isCreatingStaff ? 'not-allowed' : 'pointer', opacity: isCreatingStaff ? 0.5 : 1 }}>
+              Cancel
+            </button>
+            <button type="submit" disabled={isCreatingStaff} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: isCreatingStaff ? '#cbd5e1' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)', color: 'white', border: 'none', borderRadius: '0.625rem', padding: '0.625rem 1.25rem', fontSize: '0.875rem', fontWeight: '600', cursor: isCreatingStaff ? 'not-allowed' : 'pointer' }}>
+              {isCreatingStaff ? 'Creating...' : <><FiSave size={16} /> Create Staff Account</>}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* merchant creation form - only shown when accountType is merchant */}
+      {accountType === 'merchant' && (
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
         {/* login details - these become the new merchant's sign-in credentials */}
@@ -682,6 +793,7 @@ function CreateAccountPage() {
           </button>
         </div>
       </form>
+      )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

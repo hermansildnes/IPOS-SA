@@ -49,10 +49,10 @@ def create_product(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
+            detail="Admin or manager access required",
         )
 
     product = service.create_product(body, session)
@@ -80,10 +80,10 @@ def update_product(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
+            detail="Admin or manager access required",
         )
 
     product = service.update_product(product_id, body, session)
@@ -110,10 +110,10 @@ def delete_product(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
+            detail="Admin or manager access required",
         )
 
     product = service.get_product(product_id, session)

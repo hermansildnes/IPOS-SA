@@ -101,6 +101,20 @@ class MerchantCreate(BaseModel):
     flexible_thresholds: list[FlexibleTier] | None = None
 
 
+class MerchantFromUserCreate(BaseModel):
+    """Used when converting an existing staff user into a merchant account.
+    No username/password/email needed since the user already exists."""
+    company_name: str
+    contact_name: str
+    contact_email: EmailStr
+    contact_phone: str | None = None
+    address: str
+    credit_limit: Decimal
+    discount_plan_type: DiscountPlanType
+    fixed_discount_rate: Decimal | None = None
+    flexible_thresholds: list[FlexibleTier] | None = None
+
+
 class MerchantUpdate(BaseModel):
     company_name: str | None = None
     contact_name: str | None = None

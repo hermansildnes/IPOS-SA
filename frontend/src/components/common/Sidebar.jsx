@@ -148,8 +148,8 @@ function Sidebar() {
             src={logo}
             alt="Logo"
             style={{
-              width: '28px',
-              height: '28px',
+              width: '36px',
+              height: '36px',
               objectFit: 'contain',
             }}
           />

@@ -179,6 +179,91 @@ export async function addProductStock(productId, quantity) {
   }
 }
 
+// getOrderInvoice - fetches the invoice for a specific order
+// available to the merchant who placed the order, and to admin/manager/director
+export async function getOrderInvoice(orderID) {
+  try {
+    const invoice = await apiClient.get(`/orders/${orderID}/invoice`);
+    return {
+      id: invoice.id,
+      orderId: invoice.order_id,
+      merchantId: invoice.merchant_id,
+      invoiceDate: invoice.invoice_date,
+      totalAmount: parseFloat(invoice.total_amount),
+      discountAmount: parseFloat(invoice.discount_amount),
+      amountDue: parseFloat(invoice.amount_due),
+      createdAt: invoice.created_at,
+    };
+  } catch (error) {
+    console.error('failed to get order invoice:', error);
+    throw error;
+  }
+}
+
+// createProduct - admin/manager only, adds a new product to the catalogue
+export async function createProduct(productData) {
+  try {
+    const result = await apiClient.post('/catalogue', {
+      product_code: productData.productCode,
+      name: productData.name,
+      description: productData.description,
+      package_type: productData.packageType,
+      unit: productData.unit,
+      units_per_pack: productData.unitsPerPack,
+      package_cost: productData.packageCost,
+      min_stock_level: productData.minStockLevel ?? 0,
+      restock_percentage: productData.restockPercentage ?? 10.00,
+    });
+    return { success: true, product: result };
+  } catch (error) {
+    console.error('failed to create product:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// updateProduct - admin/manager only, updates an existing catalogue item
+export async function updateProduct(productId, productData) {
+  try {
+    const result = await apiClient.put(`/catalogue/${productId}`, {
+      product_code: productData.productCode,
+      name: productData.name,
+      description: productData.description,
+      package_type: productData.packageType,
+      unit: productData.unit,
+      units_per_pack: productData.unitsPerPack,
+      package_cost: productData.packageCost,
+      min_stock_level: productData.minStockLevel ?? 0,
+      restock_percentage: productData.restockPercentage ?? 10.00,
+    });
+    return { success: true, product: result };
+  } catch (error) {
+    console.error('failed to update product:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// deleteOrder - admin/manager only, permanently removes an order and its invoice/items
+export async function deleteOrder(orderID) {
+  try {
+    await apiClient.delete(`/orders/${orderID}`);
+    return { success: true };
+  } catch (error) {
+    console.error('failed to delete order:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// deleteProduct - admin/manager only, removes a product from the catalogue
+export async function deleteProduct(productId) {
+  try {
+    await apiClient.delete(`/catalogue/${productId}`);
+    return { success: true };
+  } catch (error) {
+    console.error('failed to delete product:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // updateOrderStatus - used by admin/manager to move an order through its lifecycle
 // dispatch step requires courier details which get stored on the order
 export async function updateOrderStatus(orderID, status, dispatchDetails = null) {
@@ -212,5 +297,10 @@ export default {
   viewAllOrders,
   getCatalogue,
   addProductStock,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  deleteOrder,
+  getOrderInvoice,
   updateOrderStatus,
 };

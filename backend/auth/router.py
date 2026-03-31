@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -148,3 +149,132 @@ def create_new_user(
     )
 
     return new_user
+
+
+class ChangeRoleRequest(BaseModel):
+    role: UserRole
+
+
+@router.get("/users", response_model=list[UserRead])
+def list_users(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can list users",
+        )
+
+    # return all non-merchant users - merchant accounts are managed via /merchants
+    users = session.exec(
+        select(User).where(User.role != UserRole.MERCHANT)
+    ).all()
+    return users
+
+
+@router.patch("/users/{user_id}/role", response_model=UserRead)
+def change_user_role(
+    user_id: str,
+    body: ChangeRoleRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can change user roles",
+        )
+
+    from uuid import UUID as _UUID
+    try:
+        uid = _UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID")
+
+    target_user = session.get(User, uid)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # if the target is a merchant being converted to a staff role, their merchant
+    # record stays intact for historical orders - we just change the auth role
+    # this lets admins move someone off merchant access without wiping their history
+
+    if str(target_user.id) == str(current_user.id) and body.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot demote yourself",
+        )
+
+    old_role = target_user.role
+    target_user.role = body.role
+    target_user.updated_at = datetime.now(timezone.utc)
+    session.add(target_user)
+    session.commit()
+    session.refresh(target_user)
+
+    log_action(
+        session,
+        action=AuditAction.USER_ROLE_CHANGED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="user",
+        target_id=str(target_user.id),
+        target_label=target_user.username,
+        detail={"old_role": str(old_role), "new_role": str(body.role)},
+        ip_address=request.client.host,
+    )
+
+    return target_user
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(
+    user_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can delete users",
+        )
+
+    from uuid import UUID as _UUID
+    try:
+        uid = _UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID")
+
+    target_user = session.get(User, uid)
+    if not target_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if target_user.role == UserRole.MERCHANT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use the merchants endpoint to delete merchant accounts",
+        )
+
+    if str(target_user.id) == str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account",
+        )
+
+    username = target_user.username
+
+    session.delete(target_user)
+    session.commit()
+
+    log_action(
+        session,
+        action=AuditAction.USER_DELETED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="user",
+        target_label=username,
+        ip_address=request.client.host,
+    )

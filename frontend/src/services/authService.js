@@ -68,6 +68,54 @@ export async function changePassword(currentPassword, newPassword) {
   }
 }
 
+// getStaffUsers - admin only, returns all non-merchant user accounts
+export async function getStaffUsers() {
+  try {
+    const users = await apiClient.get('/auth/users');
+    return users.map(u => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      role: u.role,
+      isActive: u.is_active,
+    }));
+  } catch (error) {
+    console.error('failed to get staff users:', error);
+    throw error;
+  }
+}
+
+// createStaffUser - admin only, creates a non-merchant user (admin, manager, director)
+export async function createStaffUser(username, email, password, role) {
+  try {
+    const user = await apiClient.post('/auth/users', { username, email, password, role });
+    return { success: true, user };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// changeUserRole - admin only, updates the role of any non-merchant user
+export async function changeUserRole(userId, role) {
+  try {
+    const user = await apiClient.patch(`/auth/users/${userId}/role`, { role });
+    return { success: true, user };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// deleteStaffUser - admin only, permanently removes a staff account
+// can't be used on merchant accounts - those go through the merchants endpoint
+export async function deleteStaffUser(userId) {
+  try {
+    await apiClient.delete(`/auth/users/${userId}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 // isAuthenticated - quick check whether we have a token saved
 export function isAuthenticated() {
   return !!localStorage.getItem('access_token');
@@ -83,6 +131,10 @@ export default {
   getCurrentUser,
   isAuthenticated,
   changePassword,
+  getStaffUsers,
+  createStaffUser,
+  changeUserRole,
+  deleteStaffUser,
   login,
   logout,
 };

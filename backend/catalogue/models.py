@@ -57,6 +57,8 @@ class ProductUpdate(BaseModel):
     unit: str
     units_per_pack: int
     package_cost: Decimal
+    min_stock_level: int = 0
+    restock_percentage: Decimal = Decimal("10.00")
 
 
 class AddStockRequest(BaseModel):

@@ -47,6 +47,8 @@ def update_product(product_id: UUID, data: ProductUpdate, session: Session) -> P
     product.unit = data.unit
     product.units_per_pack = data.units_per_pack
     product.package_cost = data.package_cost
+    product.min_stock_level = data.min_stock_level
+    product.restock_percentage = data.restock_percentage
     product.updated_at = datetime.now(timezone.utc)
 
     session.add(product)
