@@ -93,8 +93,7 @@ function DetailDrawer({ entry, onClose }) {
           <button onClick={onClose} className="text-blue-200 hover:text-white text-lg leading-none">✕</button>
         </div>
         <div className="p-6 space-y-4 text-sm">
-          <Row label="Timestamp"    value={new Date(entry.timestamp).toLocaleString()} />
-          <Row label="Performed by" value={entry.performed_by_username} />
+          <Row label="Timestamp" value={new Date(entry.timestamp + 'Z').toLocaleString('en-GB', { timeZone: 'Europe/London' })} />          <Row label="Performed by" value={entry.performed_by_username} />
           <Row label="Category"     value={<CategoryBadge value={entry.category} />} />
           <Row label="Action"       value={<ActionBadge value={entry.action} />} />
           {entry.target_type  && <Row label="Target type" value={entry.target_type} />}
@@ -314,8 +313,8 @@ export default function AuditLogPage() {
                           className="border-b border-gray-100 hover:bg-blue-50/30 cursor-pointer transition-colors"
                           onClick={() => setSelected(entry)}>
                           <td className="px-4 py-3 font-mono text-xs text-gray-500 whitespace-nowrap">
-                            {new Date(entry.timestamp).toLocaleString()}
-                          </td>
+                            {new Date(entry.timestamp + 'Z').toLocaleString('en-GB', { timeZone: 'Europe/London' })}
+                            </td>
                           <td className="px-4 py-3 font-medium text-gray-800">{entry.performed_by_username}</td>
                           <td className="px-4 py-3"><CategoryBadge value={entry.category} /></td>
                           <td className="px-4 py-3"><ActionBadge value={entry.action} /></td>
