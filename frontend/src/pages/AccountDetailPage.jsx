@@ -4,11 +4,13 @@ import { useAuth } from '../context/AuthContext';
 import {
   getMerchantById,
   getCurrentMerchant,
+  getMerchantBalance,
   updateMerchant,
   updateMyContactDetails,
   reinstateAccount,
+  deleteMerchant,
 } from '../services/merchantService';
-import { changePassword } from '../services/authService';
+import { changePassword, changeUserRole } from '../services/authService';
 import { STATUS_STYLES, ROLES, ACCOUNT_STATUS, DISCOUNT_TYPES } from '../utils/constants';
 import {
   FiArrowLeft,
@@ -83,6 +85,18 @@ function AccountDetailPage() {
   const [pwLoading, setPwLoading] = useState(false);
   const [pwMessage, setPwMessage] = useState(null);
 
+  // live balance fetched separately - getMerchantById doesn't include current debt
+  const [liveBalance, setLiveBalance] = useState({ currentDebt: 0, availableCredit: 0 });
+
+  // delete merchant modal state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // convert merchant to staff modal state - admin only
+  const [showConvertToStaff, setShowConvertToStaff] = useState(false);
+  const [convertToStaffRole, setConvertToStaffRole] = useState('manager');
+  const [isConverting, setIsConverting] = useState(false);
+
   useEffect(() => {
     async function loadMerchant() {
       try {
@@ -110,6 +124,18 @@ function AccountDetailPage() {
               : DEFAULT_FLEXIBLE_TIERS,
             accountStatus: loaded.accountStatus || ACCOUNT_STATUS.NORMAL,
           });
+
+          // fetch the live balance separately - the merchant detail endpoint
+          // doesn't include current_debt so we need to ask the balance endpoint
+          try {
+            const balance = await getMerchantBalance(loaded.id);
+            setLiveBalance({
+              currentDebt: balance.currentDebt || 0,
+              availableCredit: balance.availableCredit || 0,
+            });
+          } catch (_) {
+            // not fatal - just means debt shows as 0
+          }
         }
       } finally {
         setLoading(false);
@@ -168,7 +194,9 @@ function AccountDetailPage() {
   }
 
   const statusStyle = STATUS_STYLES[merchant.status] || STATUS_STYLES.normal;
-  const availableCredit = (merchant.creditLimit || 0) - (merchant.currentDebt || 0);
+  // use the live balance fetched from the dedicated balance endpoint
+  // merchant.currentDebt comes back as 0 from the detail endpoint - liveBalance has the real number
+  const availableCredit = liveBalance.availableCredit;
 
   // admins and managers can edit any merchant account
   // merchants can edit their own contact details (email and phone only)
@@ -178,7 +206,46 @@ function AccountDetailPage() {
   const canReinstate =
     user?.role === ROLES.DIRECTOR && merchant.status === ACCOUNT_STATUS.IN_DEFAULT;
 
+  // only admins can permanently delete a merchant account
+  const canDelete = user?.role === ROLES.ADMIN && !isMerchantSelfView;
+
   const backPath = user?.role === ROLES.MERCHANT ? '/dashboard' : '/accounts';
+
+  // permanently delete this merchant and all associated data
+  async function handleDeleteMerchant() {
+    setIsDeleting(true);
+    const result = await deleteMerchant(merchant.id);
+    setIsDeleting(false);
+
+    if (result.success) {
+      navigate('/accounts');
+    } else {
+      setMessage({ type: 'error', text: result.error || 'Failed to delete merchant' });
+      setShowDeleteConfirm(false);
+    }
+  }
+
+  // convert this merchant account to a staff role - admin only
+  // the merchant record stays but the user can no longer place orders
+  async function handleConvertToStaff() {
+    if (!merchant.userId) {
+      setMessage({ type: 'error', text: 'Cannot find user linked to this merchant' });
+      return;
+    }
+
+    setIsConverting(true);
+    const result = await changeUserRole(merchant.userId, convertToStaffRole);
+    setIsConverting(false);
+
+    if (result.success) {
+      setShowConvertToStaff(false);
+      // navigate to accounts since this is no longer a merchant account
+      navigate('/accounts');
+    } else {
+      setShowConvertToStaff(false);
+      setMessage({ type: 'error', text: result.error || 'Failed to convert account' });
+    }
+  }
 
   // --- flexible tier management ---
 
@@ -278,6 +345,12 @@ function AccountDetailPage() {
       setTierErrors('');
       setMessage({ type: 'success', text: 'Account updated successfully' });
       setTimeout(() => setMessage(null), 3000);
+      // refresh balance in case credit limit changed
+      try {
+        const balance = await getMerchantBalance(result.merchant.id);
+        setLiveBalance({ currentDebt: balance.currentDebt || 0, availableCredit: balance.availableCredit || 0 });
+      } catch (_) {}
+
     } else {
       setMessage({ type: 'error', text: result.error || 'Failed to save changes' });
     }
@@ -382,6 +455,52 @@ function AccountDetailPage() {
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem' }}>
+          {/* convert to staff button - admin only, not shown on self-view or while editing */}
+          {canDelete && !isEditing && (
+            <button
+              onClick={() => setShowConvertToStaff(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: '#f0fdf4',
+                color: '#16a34a',
+                border: '1px solid #bbf7d0',
+                borderRadius: '0.625rem',
+                padding: '0.625rem 1.25rem',
+                fontSize: '0.875rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+              }}
+            >
+              <FiUser size={16} />
+              Convert to Staff
+            </button>
+          )}
+
+          {/* delete merchant button - admin only, not shown on self-view */}
+          {canDelete && !isEditing && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: '#fee2e2',
+                color: '#dc2626',
+                border: '1px solid #fecaca',
+                borderRadius: '0.625rem',
+                padding: '0.625rem 1.25rem',
+                fontSize: '0.875rem',
+                fontWeight: '600',
+                cursor: 'pointer',
+              }}
+            >
+              <FiTrash2 size={16} />
+              Delete Merchant
+            </button>
+          )}
+
           {/* reinstate button - director only, defaulted accounts only */}
           {canReinstate && (
             <button
@@ -633,7 +752,7 @@ function AccountDetailPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <p style={{ fontSize: '0.875rem', color: '#64748b' }}>Current Debt</p>
                 <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#dc2626' }}>
-                  £{merchant.currentDebt.toLocaleString()}
+                  £{liveBalance.currentDebt.toLocaleString()}
                 </p>
               </div>
 
@@ -1203,6 +1322,75 @@ function AccountDetailPage() {
                 </>
               )}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* convert to staff confirmation modal - admin only */}
+      {showConvertToStaff && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '2rem', width: '100%', maxWidth: '420px' }}>
+            <h2 style={{ fontSize: '1.125rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.75rem' }}>
+              Convert to Staff Account
+            </h2>
+            <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '0.5rem' }}>
+              <strong>{merchant.companyName}</strong> will no longer be able to place orders. Their order history and invoices are kept.
+            </p>
+            <div style={{ marginBottom: '1.25rem', marginTop: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '600', color: '#374151', marginBottom: '0.375rem' }}>
+                Assign staff role
+              </label>
+              <select
+                value={convertToStaffRole}
+                onChange={(e) => setConvertToStaffRole(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.875rem', outline: 'none' }}
+              >
+                <option value="manager">Manager</option>
+                <option value="admin">Admin</option>
+                <option value="director">Director</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowConvertToStaff(false)} disabled={isConverting} style={{ padding: '0.625rem 1.25rem', background: 'white', color: '#374151', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={handleConvertToStaff} disabled={isConverting} style={{ padding: '0.625rem 1.25rem', background: isConverting ? '#bbf7d0' : '#16a34a', color: 'white', border: 'none', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: isConverting ? 'not-allowed' : 'pointer' }}>
+                {isConverting ? 'Converting...' : 'Convert Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* delete merchant confirmation modal */}
+      {showDeleteConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '2rem', width: '100%', maxWidth: '400px' }}>
+            <h2 style={{ fontSize: '1.125rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.75rem' }}>
+              Delete Merchant Account
+            </h2>
+            <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '0.5rem' }}>
+              Are you sure you want to permanently delete <strong>{merchant.companyName}</strong>?
+            </p>
+            <p style={{ fontSize: '0.8rem', color: '#dc2626', marginBottom: '1.5rem' }}>
+              This will delete all their orders, invoices and payment records. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                style={{ padding: '0.625rem 1.25rem', background: 'white', color: '#374151', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteMerchant}
+                disabled={isDeleting}
+                style={{ padding: '0.625rem 1.25rem', background: isDeleting ? '#fca5a5' : '#dc2626', color: 'white', border: 'none', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: isDeleting ? 'not-allowed' : 'pointer' }}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
           </div>
         </div>
       )}

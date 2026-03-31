@@ -168,6 +168,79 @@ def merchant_to_read(session: Session, merchant: Merchant) -> MerchantRead:
     )
 
 
+def convert_user_to_merchant(session: Session, user_id: UUID, data) -> Merchant:
+    """Convert an existing staff user into a merchant.
+    Creates the merchant record and switches the user's role to merchant.
+    Their existing password/email/username are untouched."""
+    from auth.models import User, UserRole
+
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.role == UserRole.MERCHANT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already a merchant",
+        )
+
+    # if a merchant record already exists it means this user was previously a merchant
+    # and was converted to staff - just flip their role back and reuse the existing record
+    # rather than trying to create a duplicate
+    existing = session.exec(select(Merchant).where(Merchant.user_id == user_id)).first()
+    if existing:
+        user.role = UserRole.MERCHANT
+        user.updated_at = datetime.now(timezone.utc)
+        session.add(user)
+        session.commit()
+        session.refresh(existing)
+        return existing
+
+    if data.discount_plan_type == DiscountPlanType.FIXED:
+        if data.fixed_discount_rate is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Fixed discount rate is required",
+            )
+    else:
+        data.fixed_discount_rate = None
+
+    # auto-generate account number
+    existing_merchants = session.exec(select(Merchant)).all()
+    next_number = len(existing_merchants) + 1
+    account_number = f"M{next_number:03d}"
+    while session.exec(select(Merchant).where(Merchant.account_number == account_number)).first():
+        next_number += 1
+        account_number = f"M{next_number:03d}"
+
+    merchant = Merchant(
+        user_id=user_id,
+        account_number=account_number,
+        company_name=data.company_name,
+        contact_name=data.contact_name,
+        contact_email=data.contact_email,
+        contact_phone=data.contact_phone,
+        address=data.address,
+        credit_limit=data.credit_limit,
+        discount_plan_type=data.discount_plan_type,
+        fixed_discount_rate=data.fixed_discount_rate,
+    )
+    session.add(merchant)
+    session.flush()
+
+    if data.discount_plan_type == DiscountPlanType.FLEXIBLE and data.flexible_thresholds:
+        _upsert_discount_tiers(session, merchant.id, data.flexible_thresholds)
+
+    # flip the user's role to merchant
+    user.role = UserRole.MERCHANT
+    user.updated_at = datetime.now(timezone.utc)
+    session.add(user)
+
+    session.commit()
+    session.refresh(merchant)
+    return merchant
+
+
 def get_merchant_by_id(session: Session, merchant_id: UUID) -> Merchant:
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
@@ -180,8 +253,16 @@ def get_merchant_by_id(session: Session, merchant_id: UUID) -> Merchant:
 def get_all_merchants(session: Session, status: str | None = None):
     """Get all merchants, each enriched with their live calculated balance.
     The Merchant model doesn't store a running debt total, so we compute it here
-    from the orders/payments tables to make sure the accounts list shows accurate numbers."""
-    statement = select(Merchant)
+    from the orders/payments tables to make sure the accounts list shows accurate numbers.
+    Only returns merchants whose linked user still has the merchant role - this handles
+    the case where a merchant was converted to a staff role (their record stays for history)."""
+    from auth.models import User, UserRole
+
+    statement = (
+        select(Merchant)
+        .join(User, Merchant.user_id == User.id)
+        .where(User.role == UserRole.MERCHANT)
+    )
     if status:
         statement = statement.where(Merchant.account_status == status)
 
@@ -321,3 +402,49 @@ def get_merchant_invoices(session: Session, merchant_id: UUID):
     get_merchant_by_id(session, merchant_id)
 
     return session.exec(select(Invoice).where(Invoice.merchant_id == merchant_id)).all()
+
+
+def delete_merchant(session: Session, merchant_id: UUID) -> None:
+    from auth.models import User
+    from orders.models import OrderItem
+
+    merchant = session.get(Merchant, merchant_id)
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Merchant not found"
+        )
+
+    # cascade: invoices, order items, orders
+    orders = session.exec(select(Order).where(Order.merchant_id == merchant_id)).all()
+    for order in orders:
+        # delete order items first
+        items = session.exec(select(OrderItem).where(OrderItem.order_id == order.id)).all()
+        for item in items:
+            session.delete(item)
+
+        # delete the invoice if one exists
+        invoice = session.exec(select(Invoice).where(Invoice.order_id == order.id)).first()
+        if invoice:
+            session.delete(invoice)
+
+        session.delete(order)
+
+    # delete discount tiers and payments
+    tiers = session.exec(select(DiscountTier).where(DiscountTier.merchant_id == merchant_id)).all()
+    for tier in tiers:
+        session.delete(tier)
+
+    payments = session.exec(select(Payment).where(Payment.merchant_id == merchant_id)).all()
+    for payment in payments:
+        session.delete(payment)
+
+    # delete the merchant row and the linked user account
+    user_id = merchant.user_id
+    session.delete(merchant)
+    session.flush()
+
+    user = session.get(User, user_id)
+    if user:
+        session.delete(user)
+
+    session.commit()

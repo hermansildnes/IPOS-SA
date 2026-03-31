@@ -372,6 +372,50 @@ export async function reinstateAccount(merchantId, reason, directorId) {
   }
 }
 
+// convertStaffToMerchant - admin only, turns an existing staff user into a merchant
+// creates a merchant record for them and switches their role over to merchant
+export async function convertStaffToMerchant(userId, data) {
+  try {
+    const body = {
+      company_name: data.companyName,
+      contact_name: data.contactName,
+      contact_email: data.contactEmail,
+      contact_phone: data.contactPhone || null,
+      address: data.address,
+      credit_limit: data.creditLimit,
+      discount_plan_type: data.discountPlanType,
+      fixed_discount_rate: data.fixedDiscountRate ?? null,
+    };
+
+    // convert tiered thresholds to backend format if flexible plan
+    if (data.discountPlanType === 'flexible' && data.flexibleThresholds) {
+      body.flexible_thresholds = data.flexibleThresholds.map((tier, i) => {
+        if (tier.limit !== null) {
+          return { up_to: tier.limit, rate: tier.rate };
+        }
+        const prevLimit = i > 0 ? data.flexibleThresholds[i - 1].limit : 0;
+        return { above: prevLimit, rate: tier.rate };
+      });
+    }
+
+    const merchant = await apiClient.post(`/merchants/convert/${userId}`, body);
+    return { success: true, merchant: convertMerchantFromBackend(merchant) };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// deleteMerchant - admin only, removes the merchant and all their associated data
+// this is irreversible so the ui should confirm before calling this
+export async function deleteMerchant(merchantId) {
+  try {
+    await apiClient.delete(`/merchants/${merchantId}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 export default {
   sendCommercialApplication,
   checkCommercialApplication,
@@ -380,8 +424,10 @@ export default {
   getCurrentMerchant,
   getMerchantsByStatus,
   createMerchant,
+  convertStaffToMerchant,
   updateMerchant,
   updateMyContactDetails,
   getMerchantBalance,
   reinstateAccount,
+  deleteMerchant,
 };

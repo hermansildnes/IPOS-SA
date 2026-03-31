@@ -281,7 +281,7 @@ def update_order_status(
     valid_transitions = {
         OrderStatus.ACCEPTED: [OrderStatus.PROCESSING],
         OrderStatus.PROCESSING: [OrderStatus.DISPATCHED],
-        OrderStatus.DISPATCHED: [],
+        OrderStatus.DISPATCHED: [OrderStatus.DELIVERED],
         OrderStatus.DELIVERED: [],
     }
 
@@ -310,3 +310,22 @@ def update_order_status(
     session.commit()
     session.refresh(order)
     return order
+
+
+def delete_order(session: Session, order_id: UUID) -> None:
+    order = session.get(Order, order_id)
+    if not order:
+        raise ValueError("Order not found")
+
+    # delete invoice first because of the foreign key on order_id
+    invoice = session.exec(select(Invoice).where(Invoice.order_id == order_id)).first()
+    if invoice:
+        session.delete(invoice)
+
+    # delete all the line items
+    items = session.exec(select(OrderItem).where(OrderItem.order_id == order_id)).all()
+    for item in items:
+        session.delete(item)
+
+    session.delete(order)
+    session.commit()

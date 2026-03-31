@@ -14,6 +14,7 @@ from merchants.models import (
     AccountStatus,
     Merchant,
     MerchantCreate,
+    MerchantFromUserCreate,
     MerchantRead,
     MerchantUpdate,
     MerchantBalanceRead,
@@ -22,12 +23,14 @@ from merchants.models import (
 )
 from merchants.service import (
     create_merchant as create_merchant_service,
+    convert_user_to_merchant as convert_user_to_merchant_service,
     get_merchant_by_id as get_merchant_by_id_service,
     update_merchant as update_merchant_service,
     merchant_to_read,
     calculate_merchant_balance as calculate_merchant_balance_service,
     create_invoice as create_invoice_service,
     get_merchant_invoices as get_merchant_invoices_service,
+    delete_merchant as delete_merchant_service,
 )
 
 
@@ -156,6 +159,36 @@ def create_merchant(
             "account_number": merchant.account_number,
             "discount_plan": merchant.discount_plan_type,
         },
+        ip_address=request.client.host,
+    )
+
+    return merchant_to_read(session, merchant)
+
+
+@router.post("/convert/{user_id}", response_model=MerchantRead, status_code=status.HTTP_201_CREATED)
+def convert_staff_to_merchant(
+    user_id: UUID,
+    merchant_in: MerchantFromUserCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+        )
+
+    merchant = convert_user_to_merchant_service(session, user_id, merchant_in)
+
+    log_action(
+        session,
+        action=AuditAction.MERCHANT_CREATED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="merchant",
+        target_id=str(merchant.id),
+        target_label=merchant.company_name,
+        detail={"converted_from_staff": True, "account_number": merchant.account_number},
         ip_address=request.client.host,
     )
 
@@ -339,3 +372,37 @@ def get_merchant_invoices(
     session: Session = Depends(get_session),
 ):
     return get_merchant_invoices_service(session, merchant_id)
+
+
+@router.delete("/{merchant_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_merchant(
+    merchant_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can delete merchants",
+        )
+
+    # grab the company name before deletion for the audit log
+    merchant = session.get(Merchant, merchant_id)
+    if not merchant:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Merchant not found")
+
+    company_name = merchant.company_name
+
+    delete_merchant_service(session, merchant_id)
+
+    log_action(
+        session,
+        action=AuditAction.MERCHANT_DELETED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="merchant",
+        target_id=str(merchant_id),
+        target_label=company_name,
+        ip_address=request.client.host,
+    )

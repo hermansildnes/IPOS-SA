@@ -9,7 +9,7 @@ from auth.models import User, UserRole
 from auth.service import get_current_user
 from core.database import get_session
 from orders import service
-from orders.models import CreateOrderRequest, OrderStatus, UpdateOrderStatusRequest
+from orders.models import CreateOrderRequest, Invoice, OrderStatus, UpdateOrderStatusRequest
 
 router = APIRouter()
 
@@ -142,6 +142,54 @@ def get_order_by_id(
     return order
 
 
+@router.get("/{order_id}/invoice")
+def get_order_invoice(
+    order_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    from merchants.models import Merchant
+
+    # fetch the order so we can check ownership for merchants
+    order = service.get_order(session, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
+        )
+
+    # merchants can only view invoices for their own orders
+    if current_user.role == UserRole.MERCHANT:
+        merchant = session.exec(
+            select(Merchant).where(Merchant.user_id == current_user.id)
+        ).first()
+
+        if not merchant or order["merchant_id"] != str(merchant.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You can only view invoices for your own orders",
+            )
+
+    invoice = session.exec(
+        select(Invoice).where(Invoice.order_id == order_id)
+    ).first()
+
+    if not invoice:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found for this order"
+        )
+
+    return {
+        "id": str(invoice.id),
+        "order_id": str(invoice.order_id),
+        "merchant_id": str(invoice.merchant_id),
+        "invoice_date": invoice.invoice_date.isoformat(),
+        "total_amount": float(invoice.total_amount),
+        "discount_amount": float(invoice.discount_amount),
+        "amount_due": float(invoice.amount_due),
+        "created_at": invoice.created_at.isoformat(),
+    }
+
+
 @router.patch("/{order_id}/status")
 def update_order_status(
     order_id: UUID,
@@ -200,3 +248,34 @@ def update_order_status(
 
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_order(
+    order_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin or manager can delete orders",
+        )
+
+    try:
+        service.delete_order(session, order_id)
+
+        log_action(
+            session,
+            action=AuditAction.ORDER_STATUS_CHANGED,
+            performed_by_id=current_user.id,
+            performed_by_username=current_user.username,
+            target_type="order",
+            target_id=str(order_id),
+            detail={"action": "deleted"},
+            ip_address=request.client.host,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

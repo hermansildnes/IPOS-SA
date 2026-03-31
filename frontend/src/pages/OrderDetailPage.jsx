@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getOrderDetails, updateOrderStatus } from '../services/orderService';
+import { getOrderDetails, updateOrderStatus, getOrderInvoice, deleteOrder } from '../services/orderService';
 import { ROLES, ORDER_STATUS } from '../utils/constants';
 import {
   FiArrowLeft,
@@ -13,6 +13,9 @@ import {
   FiCalendar,
   FiAlertCircle,
   FiChevronRight,
+  FiFileText,
+  FiTrash2,
+  FiDownload,
 } from 'react-icons/fi';
 
 function OrderDetailPage() {
@@ -27,6 +30,13 @@ function OrderDetailPage() {
   // controls for the status update section (admin/manager only)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
+
+  // invoice data - fetched alongside the order
+  const [invoice, setInvoice] = useState(null);
+
+  // delete order modal state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // dispatch form fields - only relevant when progressing from processing to dispatched
   const [dispatchForm, setDispatchForm] = useState({
@@ -49,6 +59,14 @@ function OrderDetailPage() {
         setLoading(true);
         const data = await getOrderDetails(orderId);
         setOrder(data);
+
+        // fetch the invoice too - all roles that can see the order can see the invoice
+        try {
+          const inv = await getOrderInvoice(orderId);
+          setInvoice(inv);
+        } catch (_) {
+          // invoice might not exist yet for very old orders, just skip it
+        }
       } catch (err) {
         setError(err.message || 'Failed to load order');
       } finally {
@@ -61,27 +79,29 @@ function OrderDetailPage() {
     }
   }, [orderId]);
 
-  // the three stages an order moves through - dispatched is the final state
-  // delivered is not set by staff; it's confirmed through other means
+  // four stages an order moves through - staff can now advance all the way to delivered
   const statusSteps = [
     { key: ORDER_STATUS.ACCEPTED, label: 'Accepted', icon: FiCheckCircle, color: '#10b981' },
     { key: ORDER_STATUS.PROCESSING, label: 'Processing', icon: FiPackage, color: '#f59e0b' },
     { key: ORDER_STATUS.DISPATCHED, label: 'Dispatched', icon: FiTruck, color: '#3b82f6' },
+    { key: ORDER_STATUS.DELIVERED, label: 'Delivered', icon: FiCheckCircle, color: '#10b981' },
   ];
 
   const statusIndexMap = {
     accepted: 0,
     processing: 1,
     dispatched: 2,
+    delivered: 3,
   };
 
   const currentStepIndex = order ? (statusIndexMap[order.status?.toLowerCase()] ?? 0) : 0;
 
-  // figure out what status comes after the current one - dispatched has no next step
+  // figure out what status comes after the current one - delivered is the final state
   const nextStatusMap = {
     accepted: ORDER_STATUS.PROCESSING,
     processing: ORDER_STATUS.DISPATCHED,
-    dispatched: null,
+    dispatched: ORDER_STATUS.DELIVERED,
+    delivered: null,
   };
 
   const nextStatus = order ? nextStatusMap[order.status?.toLowerCase()] : null;
@@ -126,6 +146,144 @@ function OrderDetailPage() {
     }
 
     setIsUpdatingStatus(false);
+  };
+
+  // generate and print a pdf-style invoice in a new window
+  // didn't want to pull in jspdf just for this so a print window works fine
+  const handleDownloadInvoice = () => {
+    if (!invoice || !order) return;
+
+    const invoiceDate = new Date(invoice.invoiceDate).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+    const orderDate = new Date(order.orderDate).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const itemsHtml = (order.items || []).map((item) => `
+      <tr>
+        <td style="padding: 0.625rem 0.75rem; border-bottom: 1px solid #f1f5f9; font-size: 0.875rem; color: #0f172a;">${item.productName || 'Product'}</td>
+        <td style="padding: 0.625rem 0.75rem; border-bottom: 1px solid #f1f5f9; font-size: 0.875rem; color: #64748b; text-align: right;">£${parseFloat(item.unitPrice).toFixed(2)}</td>
+        <td style="padding: 0.625rem 0.75rem; border-bottom: 1px solid #f1f5f9; font-size: 0.875rem; color: #64748b; text-align: right;">${item.quantity}</td>
+        <td style="padding: 0.625rem 0.75rem; border-bottom: 1px solid #f1f5f9; font-size: 0.875rem; font-weight: 600; color: #0f172a; text-align: right;">£${parseFloat(item.cost).toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    const discountRow = invoice.discountAmount > 0 ? `
+      <tr>
+        <td colspan="3" style="padding: 0.5rem 0.75rem; text-align: right; font-size: 0.875rem; color: #10b981;">Discount Applied</td>
+        <td style="padding: 0.5rem 0.75rem; text-align: right; font-size: 0.875rem; font-weight: 600; color: #10b981;">−£${invoice.discountAmount.toFixed(2)}</td>
+      </tr>
+    ` : '';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoice ${invoice.id?.substring(0, 8).toUpperCase()} - InfoPharma Ltd</title>
+          <meta charset="UTF-8" />
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #0f172a; padding: 2.5rem; background: white; }
+            @media print {
+              body { padding: 1.5rem; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div style="max-width: 700px; margin: 0 auto;">
+
+            <!-- header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2.5rem;">
+              <div>
+                <h1 style="font-size: 1.75rem; font-weight: 800; color: #0f172a; margin-bottom: 0.25rem;">InfoPharma Ltd.</h1>
+                <p style="font-size: 0.875rem; color: #64748b;">Pharmaceutical Distribution</p>
+              </div>
+              <div style="text-align: right;">
+                <div style="background: #6366f1; color: white; padding: 0.375rem 0.875rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em; display: inline-block; margin-bottom: 0.5rem;">INVOICE</div>
+                <p style="font-size: 0.875rem; color: #64748b;">No. ${invoice.id?.substring(0, 8).toUpperCase()}</p>
+                <p style="font-size: 0.875rem; color: #64748b;">Date: ${invoiceDate}</p>
+              </div>
+            </div>
+
+            <!-- divider -->
+            <hr style="border: none; border-top: 2px solid #e2e8f0; margin-bottom: 2rem;" />
+
+            <!-- merchant + order info -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+              <div>
+                <p style="font-size: 0.7rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem;">Billed To</p>
+                <p style="font-size: 1rem; font-weight: 700; color: #0f172a;">${order.merchantName || 'Merchant'}</p>
+              </div>
+              <div>
+                <p style="font-size: 0.7rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem;">Order Reference</p>
+                <p style="font-size: 0.875rem; font-weight: 600; color: #0f172a;">Order #${order.id?.substring(0, 8).toUpperCase()}</p>
+                <p style="font-size: 0.8rem; color: #64748b;">Placed: ${orderDate}</p>
+              </div>
+            </div>
+
+            <!-- items table -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; border: 1px solid #e2e8f0; border-radius: 0.5rem; overflow: hidden;">
+              <thead>
+                <tr style="background: #f8fafc;">
+                  <th style="padding: 0.75rem; text-align: left; font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Product</th>
+                  <th style="padding: 0.75rem; text-align: right; font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Unit Price</th>
+                  <th style="padding: 0.75rem; text-align: right; font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Qty</th>
+                  <th style="padding: 0.75rem; text-align: right; font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+                <tr style="background: #f8fafc;">
+                  <td colspan="3" style="padding: 0.5rem 0.75rem; text-align: right; font-size: 0.875rem; color: #64748b; border-top: 2px solid #e2e8f0;">Subtotal</td>
+                  <td style="padding: 0.5rem 0.75rem; text-align: right; font-size: 0.875rem; font-weight: 600; color: #0f172a; border-top: 2px solid #e2e8f0;">£${invoice.totalAmount.toFixed(2)}</td>
+                </tr>
+                ${discountRow}
+                <tr style="background: #f8fafc;">
+                  <td colspan="3" style="padding: 0.75rem; text-align: right; font-size: 1rem; font-weight: 700; color: #0f172a; border-top: 1px solid #e2e8f0;">Amount Due</td>
+                  <td style="padding: 0.75rem; text-align: right; font-size: 1rem; font-weight: 700; color: #6366f1; border-top: 1px solid #e2e8f0;">£${invoice.amountDue.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- footer note -->
+            <p style="font-size: 0.75rem; color: #94a3b8; text-align: center; margin-top: 2rem;">
+              This invoice was generated automatically by IPOS-SA · InfoPharma Ltd.
+            </p>
+
+            <!-- print button - hidden when printing -->
+            <div class="no-print" style="text-align: center; margin-top: 2rem;">
+              <button onclick="window.print()" style="background: #6366f1; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer;">
+                Print / Save as PDF
+              </button>
+            </div>
+
+          </div>
+        </body>
+      </html>
+    `;
+
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+  };
+
+  // permanently delete this order - admin/manager only
+  const handleDeleteOrder = async () => {
+    setIsDeleting(true);
+    const result = await deleteOrder(orderId);
+    setIsDeleting(false);
+    if (result.success) {
+      navigate('/orders');
+    } else {
+      setShowDeleteConfirm(false);
+      setStatusMessage({ type: 'error', text: result.error || 'Failed to delete order' });
+    }
   };
 
   // loading state
@@ -239,18 +397,43 @@ function OrderDetailPage() {
               </p>
             </div>
 
-            {/* status badge */}
-            <span style={{
-              padding: '0.5rem 1rem',
-              borderRadius: '9999px',
-              fontSize: '0.875rem',
-              fontWeight: '600',
-              background: statusSteps[currentStepIndex].color + '20',
-              color: statusSteps[currentStepIndex].color,
-              textTransform: 'capitalize',
-            }}>
-              {order.status}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              {/* delete order button - admin/manager only */}
+              {canManageOrders && (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    background: '#fee2e2',
+                    color: '#dc2626',
+                    border: '1px solid #fecaca',
+                    borderRadius: '0.5rem',
+                    padding: '0.5rem 0.875rem',
+                    fontSize: '0.8rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FiTrash2 size={14} />
+                  Delete
+                </button>
+              )}
+
+              {/* status badge */}
+              <span style={{
+                padding: '0.5rem 1rem',
+                borderRadius: '9999px',
+                fontSize: '0.875rem',
+                fontWeight: '600',
+                background: statusSteps[currentStepIndex].color + '20',
+                color: statusSteps[currentStepIndex].color,
+                textTransform: 'capitalize',
+              }}>
+                {order.status}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -565,6 +748,83 @@ function OrderDetailPage() {
               </div>
             </div>
 
+            {/* invoice card - shown to everyone who can view the order */}
+            {invoice && (
+              <div style={{
+                background: 'white',
+                borderRadius: '0.75rem',
+                border: '1px solid #e2e8f0',
+                padding: '1.25rem',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{
+                    fontSize: '1rem',
+                    fontWeight: '600',
+                    color: '#0f172a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}>
+                    <FiFileText size={16} style={{ color: '#6366f1' }} />
+                    Invoice
+                  </h3>
+                  {/* download button - visible to everyone who can see the invoice */}
+                  <button
+                    onClick={handleDownloadInvoice}
+                    title="Download Invoice PDF"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      background: '#ede9fe',
+                      color: '#6366f1',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      padding: '0.35rem 0.625rem',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <FiDownload size={13} />
+                    PDF
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Invoice ID</p>
+                    <p style={{ fontSize: '0.7rem', fontWeight: '600', color: '#0f172a', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                      {invoice.id}
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Invoice Date</p>
+                    <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#0f172a' }}>
+                      {new Date(invoice.invoiceDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
+                  </div>
+
+                  <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.625rem', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                      <span style={{ color: '#64748b' }}>Subtotal</span>
+                      <span style={{ fontWeight: '600', color: '#0f172a' }}>£{invoice.totalAmount.toFixed(2)}</span>
+                    </div>
+                    {invoice.discountAmount > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                        <span style={{ color: '#10b981' }}>Discount</span>
+                        <span style={{ fontWeight: '600', color: '#10b981' }}>−£{invoice.discountAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.375rem' }}>
+                      <span style={{ fontWeight: '700', color: '#0f172a' }}>Amount Due</span>
+                      <span style={{ fontWeight: '700', color: '#0f172a' }}>£{invoice.amountDue.toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* order status management - admin and manager only */}
             {canManageOrders && nextStatus && (
               <div style={{
@@ -763,6 +1023,31 @@ function OrderDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* delete order confirmation modal */}
+      {showDeleteConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '2rem', width: '100%', maxWidth: '400px' }}>
+            <h2 style={{ fontSize: '1.125rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.75rem' }}>
+              Delete Order
+            </h2>
+            <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '0.5rem' }}>
+              Are you sure you want to delete Order #{order.id?.substring(0, 8).toUpperCase()}?
+            </p>
+            <p style={{ fontSize: '0.8rem', color: '#dc2626', marginBottom: '1.5rem' }}>
+              This will also delete the associated invoice. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} style={{ padding: '0.625rem 1.25rem', background: 'white', color: '#374151', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={handleDeleteOrder} disabled={isDeleting} style={{ padding: '0.625rem 1.25rem', background: isDeleting ? '#fca5a5' : '#dc2626', color: 'white', border: 'none', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: isDeleting ? 'not-allowed' : 'pointer' }}>
+                {isDeleting ? 'Deleting...' : 'Delete Order'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
