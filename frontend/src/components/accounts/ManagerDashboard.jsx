@@ -26,7 +26,7 @@ function ManagerDashboard() {
         // load orders and low stock report at the same time
         const [allOrders, stockReport] = await Promise.all([
           viewAllOrders(),
-          reportService.getLowStockReport().catch(() => null),
+          reportService.getLowStockReport(true).catch(() => null),
         ]);
 
         // pending = accepted or processing (not dispatched yet)

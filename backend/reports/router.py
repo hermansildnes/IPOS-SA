@@ -145,6 +145,7 @@ def get_merchant_orders_detailed(
 @router.get("/low-stock", response_model=LowStockReport)
 def get_low_stock_report(
     request: Request,
+    silent: bool = False,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -156,15 +157,16 @@ def get_low_stock_report(
 
     result = service.get_low_stock_report(session)
 
-    log_action(
-        session,
-        action=AuditAction.REPORT_GENERATED,
-        performed_by_id=current_user.id,
-        performed_by_username=current_user.username,
-        target_type="report",
-        target_label="Low Stock Report",
-        ip_address=request.client.host,
-    )
+    if not silent:
+        log_action(
+            session,
+            action=AuditAction.REPORT_GENERATED,
+            performed_by_id=current_user.id,
+            performed_by_username=current_user.username,
+            target_type="report",
+            target_label="Low Stock Report",
+            ip_address=request.client.host,
+        )
 
     return result
 

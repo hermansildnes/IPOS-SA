@@ -7,9 +7,9 @@ import { AuthProvider } from './context/AuthContext.jsx'
 // We wrap the entire app in AuthProvider so every page
 // can access the login state without passing it as props
 createRoot(document.getElementById('root')).render(
-  <StrictMode>
+  // <StrictMode>
     <AuthProvider>
       <App />
     </AuthProvider>
-  </StrictMode>,
+  // </StrictMode>,
 )
