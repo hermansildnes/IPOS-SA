@@ -14,7 +14,9 @@ const reportService = {
       `/reports/merchant-orders-detailed?merchant_id=${merchantId}&start_date=${startDate}&end_date=${endDate}`
     ),
 
-  getLowStockReport: () => apiClient.get('/reports/low-stock'),
+  getLowStockReport(silent = false) {
+  return apiClient.get(`/reports/low-stock?silent=${silent}`);
+},
 
   getStockTurnoverReport: (startDate, endDate) =>
     apiClient.get(`/reports/stock-turnover?start_date=${startDate}&end_date=${endDate}`),

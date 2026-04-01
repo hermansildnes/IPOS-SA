@@ -97,7 +97,7 @@ function AdminDashboard() {
         const [merchants, allOrders, stockReport] = await Promise.all([
           getAllMerchants(),
           viewAllOrders(),
-          reportService.getLowStockReport().catch(() => null),
+          reportService.getLowStockReport(true).catch(() => null),
         ]);
 
         // count merchants by account status
