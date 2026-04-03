@@ -27,7 +27,7 @@ npm run dev
 App available at http://localhost:5173.
 
 
-### 3. Run Tests. cd frontend ,  npm test -- --run
+### 3. Run Tests. cd frontend, npm test -- --run
 
 
 
