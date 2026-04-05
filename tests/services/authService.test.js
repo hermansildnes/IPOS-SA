@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // vi.mock has to be called before imports apparently, took me a while to figure that out
-vi.mock('../../services/apiClient', () => ({
+vi.mock('../../frontend/src/services/apiClient', () => ({
   apiClient: {
     post: vi.fn(),
     get: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('../../services/apiClient', () => ({
   getAuthToken: vi.fn(),
 }));
 
-import { apiClient, setAuthToken, clearAuthToken } from '../../services/apiClient';
+import { apiClient, setAuthToken, clearAuthToken } from '../../frontend/src/services/apiClient';
 import {
   merchantLogin,
   merchantDisconnect,
@@ -27,7 +27,7 @@ import {
   createStaffUser,
   changeUserRole,
   deleteStaffUser,
-} from '../../services/authService';
+} from '../../frontend/src/services/authService';
 
 
 // merchantLogin - test cases 21-26
@@ -87,7 +87,7 @@ describe('merchantLogin', () => {
   });
 
   // not in the original test doc but wanted to cover this edge case -
-  // if somehow the response comes back without a token we should still fail gracefully
+  // just in case the response doesnt include a token for whatever reason
   it('fails if response has no token', async () => {
     apiClient.post.mockResolvedValueOnce({ message: 'ok' });
 
