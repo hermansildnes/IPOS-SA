@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
-# Turnover Report
+# ── Turnover Report ────────────────────────────────────────────────────────
 
 
 class TurnoverItem(BaseModel):
@@ -23,7 +23,7 @@ class TurnoverReport(BaseModel):
     grand_total_revenue: Decimal
 
 
-# Merchant Orders Summary
+# ── Merchant Orders Summary ────────────────────────────────────────────────
 
 
 class OrderSummaryRow(BaseModel):
@@ -33,8 +33,7 @@ class OrderSummaryRow(BaseModel):
     discount: Decimal
     amount_due: Decimal
     dispatched_date: date | None
-    delivered_date: date | None  # date order reached DELIVERED status
-    payment_date: date | None  # date payment was received (None = Pending)
+    delivered_date: date | None
 
 
 class MerchantOrdersSummaryReport(BaseModel):
@@ -52,16 +51,15 @@ class MerchantOrdersSummaryReport(BaseModel):
     total_discount: Decimal
     total_amount_due: Decimal
     total_orders: int
-    paid_orders: int
     dispatched_orders: int
 
 
-# Merchant Orders Detailed
+# ── Merchant Orders Detailed ───────────────────────────────────────────────
 
 
 class DetailedOrderItem(BaseModel):
     product_id: UUID
-    product_code: str  # Item ID shown in appendix
+    product_code: str
     product_name: str
     quantity: int
     unit_price: Decimal
@@ -76,7 +74,6 @@ class DetailedOrder(BaseModel):
     total: Decimal
     discount: Decimal
     amount_due: Decimal
-    payment_status: str
 
 
 class MerchantOrdersDetailedReport(BaseModel):
@@ -91,7 +88,7 @@ class MerchantOrdersDetailedReport(BaseModel):
     orders: list[DetailedOrder]
 
 
-# Low Stock Report
+# ── Low Stock Report ───────────────────────────────────────────────────────
 
 
 class LowStockItem(BaseModel):
@@ -101,9 +98,7 @@ class LowStockItem(BaseModel):
     current_stock: int
     min_stock_level: int
     shortfall: int
-    recommended_min_order: (
-        int  # qty to bring stock to restock_percentage above min level
-    )
+    recommended_min_order: int
 
 
 class LowStockReport(BaseModel):
@@ -112,7 +107,7 @@ class LowStockReport(BaseModel):
     total_items_below_minimum: int
 
 
-# Merchant Invoices Report
+# ── Merchant Invoices Report ───────────────────────────────────────────────
 
 
 class MerchantInvoiceRow(BaseModel):
@@ -139,7 +134,7 @@ class MerchantInvoicesReport(BaseModel):
     total_invoices: int
 
 
-# All Invoices Report
+# ── All Invoices Report ────────────────────────────────────────────────────
 
 
 class AllInvoiceRow(BaseModel):
@@ -162,7 +157,7 @@ class AllInvoicesReport(BaseModel):
     total_invoices: int
 
 
-# --- Stock Turnover Report ---
+# ── Stock Turnover Report ──────────────────────────────────────────────────
 
 
 class StockTurnoverItem(BaseModel):

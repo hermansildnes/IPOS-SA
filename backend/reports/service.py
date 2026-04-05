@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlmodel import Session, select
 
 from catalogue.models import Product, StockReceipt
-from merchants.models import Merchant, Payment
+from merchants.models import Merchant
 from orders.models import Invoice, Order, OrderItem, OrderStatus
 
 from reports.models import (
@@ -28,25 +28,14 @@ from reports.models import (
 )
 
 
-def _get_payment_date(session: Session, merchant_id: UUID) -> date | None:
-    """Return date of earliest payment by this merchant, or None."""
-    payment = session.exec(
-        select(Payment)
-        .where(Payment.merchant_id == merchant_id)
-        .order_by(Payment.payment_date)
-    ).first()
-    return payment.payment_date if payment else None
-
-
 def get_turnover_report(
-    session: Session, start_date: date, end_date: date
+        session: Session, start_date: date, end_date: date
 ) -> TurnoverReport:
-    """Report i: Turnover for a given period — quantities sold and revenue."""
     orders = session.exec(
         select(Order).where(
             Order.order_date >= start_date,
             Order.order_date <= end_date,
-        )
+            )
     ).all()
 
     product_stats: dict[UUID, dict] = {}
@@ -90,16 +79,11 @@ def get_turnover_report(
 
 
 def get_merchant_orders_summary(
-    session: Session,
-    merchant_id: UUID,
-    start_date: date,
-    end_date: date,
+        session: Session,
+        merchant_id: UUID,
+        start_date: date,
+        end_date: date,
 ) -> MerchantOrdersSummaryReport:
-    """
-    Report ii — Appendix 4 layout:
-    Order ID | Ordered | Amount | Dispatched | Delivered | Paid
-    with a Totals line at the bottom.
-    """
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
         raise ValueError("Merchant not found")
@@ -110,7 +94,7 @@ def get_merchant_orders_summary(
             Order.merchant_id == merchant_id,
             Order.order_date >= start_date,
             Order.order_date <= end_date,
-        )
+            )
         .order_by(Order.order_date)
     ).all()
 
@@ -119,9 +103,6 @@ def get_merchant_orders_summary(
     total_discount = Decimal("0.00")
     total_due = Decimal("0.00")
     dispatched_count = 0
-    paid_count = 0
-
-    payment_date = _get_payment_date(session, merchant_id)
 
     for order in orders:
         delivered_date = None
@@ -130,8 +111,6 @@ def get_merchant_orders_summary(
 
         if order.dispatched_date:
             dispatched_count += 1
-        if payment_date:
-            paid_count += 1
 
         rows.append(
             OrderSummaryRow(
@@ -142,7 +121,6 @@ def get_merchant_orders_summary(
                 amount_due=order.amount_due,
                 dispatched_date=order.dispatched_date,
                 delivered_date=delivered_date,
-                payment_date=payment_date,
             )
         )
         total_value += order.total
@@ -164,22 +142,16 @@ def get_merchant_orders_summary(
         total_discount=total_discount,
         total_amount_due=total_due,
         total_orders=len(orders),
-        paid_orders=paid_count,
         dispatched_orders=dispatched_count,
     )
 
 
 def get_merchant_orders_detailed(
-    session: Session,
-    merchant_id: UUID,
-    start_date: date,
-    end_date: date,
+        session: Session,
+        merchant_id: UUID,
+        start_date: date,
+        end_date: date,
 ) -> MerchantOrdersDetailedReport:
-    """
-    Report iii — Appendix 5 layout:
-    Contact header, then per order: Order ID | Cost | Ordered date
-    then items: Item ID | Quantity | Unit Cost | Amount
-    """
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
         raise ValueError("Merchant not found")
@@ -190,7 +162,7 @@ def get_merchant_orders_detailed(
             Order.merchant_id == merchant_id,
             Order.order_date >= start_date,
             Order.order_date <= end_date,
-        )
+            )
         .order_by(Order.order_date)
     ).all()
 
@@ -214,7 +186,6 @@ def get_merchant_orders_detailed(
                 )
             )
 
-        payment_date = _get_payment_date(session, merchant_id)
         detailed_orders.append(
             DetailedOrder(
                 order_id=order.id,
@@ -224,7 +195,6 @@ def get_merchant_orders_detailed(
                 total=order.total,
                 discount=order.discount_amount,
                 amount_due=order.amount_due,
-                payment_status="paid" if payment_date else "pending",
             )
         )
 
@@ -242,21 +212,13 @@ def get_merchant_orders_detailed(
 
 
 def get_low_stock_report(session: Session) -> LowStockReport:
-    """
-    Report — Appendix 3 layout:
-    Item ID | Description | Availability | Stock Limit | Recommended Min Order
-    Recommended Min Order = qty to bring stock to restock_percentage% above min_stock_level.
-    """
     products = session.exec(select(Product)).all()
 
     low_items = []
     for p in products:
         if p.stock_quantity < p.min_stock_level:
-            # target = min_stock_level * (1 + restock_percentage/100)
-            # e.g. min=300, 10% → target=330 → order = 330 - current_stock
             target = ceil(p.min_stock_level * (1 + float(p.restock_percentage) / 100))
             recommended = max(target - p.stock_quantity, 0)
-
             low_items.append(
                 LowStockItem(
                     product_id=p.id,
@@ -270,7 +232,6 @@ def get_low_stock_report(session: Session) -> LowStockReport:
             )
 
     low_items.sort(key=lambda x: x.shortfall, reverse=True)
-
     return LowStockReport(
         generated_at=datetime.now(timezone.utc),
         items=low_items,
@@ -279,15 +240,11 @@ def get_low_stock_report(session: Session) -> LowStockReport:
 
 
 def get_merchant_invoices_report(
-    session: Session,
-    merchant_id: UUID,
-    start_date: date,
-    end_date: date,
+        session: Session,
+        merchant_id: UUID,
+        start_date: date,
+        end_date: date,
 ) -> MerchantInvoicesReport:
-    """
-    Invoices raised against a merchant for a period.
-    Lets staff navigate through invoice details on screen or print them.
-    """
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
         raise ValueError("Merchant not found")
@@ -298,12 +255,13 @@ def get_merchant_invoices_report(
             Invoice.merchant_id == merchant_id,
             Invoice.invoice_date >= start_date,
             Invoice.invoice_date <= end_date,
-        )
+            )
         .order_by(Invoice.invoice_date)
     ).all()
 
     rows = []
     total_due = Decimal("0.00")
+
     for inv in invoices:
         rows.append(
             MerchantInvoiceRow(
@@ -334,19 +292,16 @@ def get_merchant_invoices_report(
 
 
 def get_all_invoices_report(
-    session: Session,
-    start_date: date,
-    end_date: date,
+        session: Session,
+        start_date: date,
+        end_date: date,
 ) -> AllInvoicesReport:
-    """
-    All invoices raised by InfoPharma for a given period
-    """
     invoices = session.exec(
         select(Invoice)
         .where(
             Invoice.invoice_date >= start_date,
             Invoice.invoice_date <= end_date,
-        )
+            )
         .order_by(Invoice.invoice_date)
     ).all()
 
@@ -379,9 +334,8 @@ def get_all_invoices_report(
 
 
 def get_stock_turnover_report(
-    session: Session, start_date: date, end_date: date
+        session: Session, start_date: date, end_date: date
 ) -> StockTurnoverReport:
-    """Report vi: Stock turnover — goods sold and newly received within a period."""
     products = session.exec(select(Product)).all()
 
     items_out = []
@@ -390,7 +344,7 @@ def get_stock_turnover_report(
             select(Order).where(
                 Order.order_date >= start_date,
                 Order.order_date <= end_date,
-            )
+                )
         ).all()
 
         qty_sold = 0
@@ -399,7 +353,7 @@ def get_stock_turnover_report(
                 select(OrderItem).where(
                     OrderItem.order_id == order.id,
                     OrderItem.product_id == p.id,
-                )
+                    )
             ).first()
             if order_item:
                 qty_sold += order_item.quantity
@@ -407,11 +361,9 @@ def get_stock_turnover_report(
         receipts = session.exec(
             select(StockReceipt).where(
                 StockReceipt.product_id == p.id,
-                StockReceipt.received_at
-                >= datetime.combine(start_date, datetime.min.time()),
-                StockReceipt.received_at
-                <= datetime.combine(end_date, datetime.max.time()),
-            )
+                StockReceipt.received_at >= datetime.combine(start_date, datetime.min.time()),
+                StockReceipt.received_at <= datetime.combine(end_date, datetime.max.time()),
+                )
         ).all()
         qty_received = sum(r.quantity_added for r in receipts)
 
