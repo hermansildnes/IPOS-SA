@@ -82,4 +82,68 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeTruthy();
   });
+
+  // HTTP wrapper tests
+
+  // verifies the correct HTTP method and endpoint are used
+  it('HTTP-01: sends a POST request to /auth/login', async () => {
+    apiClient.post.mockResolvedValueOnce({ access_token: 'tok' });
+    apiClient.get.mockResolvedValueOnce({ id: '1', username: 'merchant1', role: 'merchant' });
+
+    await merchantLogin('merchant1', 'correctPass');
+
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(apiClient.post.mock.calls[0][0]).toBe('/auth/login');
+  });
+
+  // verifies the request body uses the correct field names
+  it('HTTP-02: sends username and password as correct field names in request body', async () => {
+    apiClient.post.mockResolvedValueOnce({ access_token: 'tok' });
+    apiClient.get.mockResolvedValueOnce({ id: '1', username: 'merchant1', role: 'merchant' });
+
+    await merchantLogin('merchant1', 'correctPass');
+
+    expect(apiClient.post).toHaveBeenCalledWith('/auth/login', {
+      username: 'merchant1',
+      password: 'correctPass',
+    });
+  });
+
+  // verifies the JWT token is stored after a successful login
+  it('HTTP-03: stores the JWT token returned in the response', async () => {
+    apiClient.post.mockResolvedValueOnce({ access_token: 'valid-jwt-token' });
+    apiClient.get.mockResolvedValueOnce({ id: '1', username: 'merchant1', role: 'merchant' });
+
+    await merchantLogin('merchant1', 'correctPass');
+
+    expect(setAuthToken).toHaveBeenCalledWith('valid-jwt-token');
+  });
+
+  // verifies the token is cleared before every login attempt to prevent stale sessions
+  it('HTTP-04: clears any existing token before sending login request', async () => {
+    apiClient.post.mockRejectedValueOnce(new Error('fail'));
+
+    await merchantLogin('merchant1', 'correctPass');
+
+    expect(clearAuthToken).toHaveBeenCalled();
+  });
+
+  // verifies no token is stored when login fails
+  it('HTTP-05: does not store a token when login fails', async () => {
+    apiClient.post.mockRejectedValueOnce(new Error('Invalid username or password'));
+
+    await merchantLogin('merchant1', 'wrongPass');
+
+    expect(setAuthToken).not.toHaveBeenCalled();
+  });
+
+  // verifies a missing token in the response is treated as a failure
+  it('HTTP-06: returns failure if response contains no access_token field', async () => {
+    apiClient.post.mockResolvedValueOnce({ message: 'ok' });
+
+    const result = await merchantLogin('merchant1', 'correctPass');
+
+    expect(result.success).toBe(false);
+    expect(setAuthToken).not.toHaveBeenCalled();
+  });
 });
