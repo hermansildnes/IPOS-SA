@@ -176,7 +176,9 @@ def convert_user_to_merchant(session: Session, user_id: UUID, data) -> Merchant:
 
     user = session.get(User, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     if user.role == UserRole.MERCHANT:
         raise HTTPException(
@@ -209,7 +211,9 @@ def convert_user_to_merchant(session: Session, user_id: UUID, data) -> Merchant:
     existing_merchants = session.exec(select(Merchant)).all()
     next_number = len(existing_merchants) + 1
     account_number = f"M{next_number:03d}"
-    while session.exec(select(Merchant).where(Merchant.account_number == account_number)).first():
+    while session.exec(
+        select(Merchant).where(Merchant.account_number == account_number)
+    ).first():
         next_number += 1
         account_number = f"M{next_number:03d}"
 
@@ -228,7 +232,10 @@ def convert_user_to_merchant(session: Session, user_id: UUID, data) -> Merchant:
     session.add(merchant)
     session.flush()
 
-    if data.discount_plan_type == DiscountPlanType.FLEXIBLE and data.flexible_thresholds:
+    if (
+        data.discount_plan_type == DiscountPlanType.FLEXIBLE
+        and data.flexible_thresholds
+    ):
         _upsert_discount_tiers(session, merchant.id, data.flexible_thresholds)
 
     # flip the user's role to merchant
@@ -418,23 +425,31 @@ def delete_merchant(session: Session, merchant_id: UUID) -> None:
     orders = session.exec(select(Order).where(Order.merchant_id == merchant_id)).all()
     for order in orders:
         # delete order items first
-        items = session.exec(select(OrderItem).where(OrderItem.order_id == order.id)).all()
+        items = session.exec(
+            select(OrderItem).where(OrderItem.order_id == order.id)
+        ).all()
         for item in items:
             session.delete(item)
 
         # delete the invoice if one exists
-        invoice = session.exec(select(Invoice).where(Invoice.order_id == order.id)).first()
+        invoice = session.exec(
+            select(Invoice).where(Invoice.order_id == order.id)
+        ).first()
         if invoice:
             session.delete(invoice)
 
         session.delete(order)
 
     # delete discount tiers and payments
-    tiers = session.exec(select(DiscountTier).where(DiscountTier.merchant_id == merchant_id)).all()
+    tiers = session.exec(
+        select(DiscountTier).where(DiscountTier.merchant_id == merchant_id)
+    ).all()
     for tier in tiers:
         session.delete(tier)
 
-    payments = session.exec(select(Payment).where(Payment.merchant_id == merchant_id)).all()
+    payments = session.exec(
+        select(Payment).where(Payment.merchant_id == merchant_id)
+    ).all()
     for payment in payments:
         session.delete(payment)
 

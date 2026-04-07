@@ -65,7 +65,9 @@ def change_password(
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(body: LoginRequest, request: Request, session: Session = Depends(get_session)):
+def login(
+    body: LoginRequest, request: Request, session: Session = Depends(get_session)
+):
     user = session.exec(select(User).where(User.username == body.username)).first()
 
     if user is None or not verify_password(body.password, user.password_hash):
@@ -167,9 +169,7 @@ def list_users(
         )
 
     # return all non-merchant users - merchant accounts are managed via /merchants
-    users = session.exec(
-        select(User).where(User.role != UserRole.MERCHANT)
-    ).all()
+    users = session.exec(select(User).where(User.role != UserRole.MERCHANT)).all()
     return users
 
 
@@ -188,14 +188,19 @@ def change_user_role(
         )
 
     from uuid import UUID as _UUID
+
     try:
         uid = _UUID(user_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID"
+        )
 
     target_user = session.get(User, uid)
     if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     # if the target is a merchant being converted to a staff role, their merchant
     # record stays intact for historical orders - we just change the auth role
@@ -243,14 +248,19 @@ def delete_user(
         )
 
     from uuid import UUID as _UUID
+
     try:
         uid = _UUID(user_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user ID"
+        )
 
     target_user = session.get(User, uid)
     if not target_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
 
     if target_user.role == UserRole.MERCHANT:
         raise HTTPException(

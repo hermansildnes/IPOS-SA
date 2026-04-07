@@ -6,7 +6,13 @@ from uuid import UUID
 
 from sqlmodel import Session, col, func, select
 
-from audit.models import ACTION_CATEGORY, AuditAction, AuditCategory, AuditLog, AuditLogPage
+from audit.models import (
+    ACTION_CATEGORY,
+    AuditAction,
+    AuditCategory,
+    AuditLog,
+    AuditLogPage,
+)
 
 
 def log_action(

@@ -29,13 +29,13 @@ from reports.models import (
 
 
 def get_turnover_report(
-        session: Session, start_date: date, end_date: date
+    session: Session, start_date: date, end_date: date
 ) -> TurnoverReport:
     orders = session.exec(
         select(Order).where(
             Order.order_date >= start_date,
             Order.order_date <= end_date,
-            )
+        )
     ).all()
 
     product_stats: dict[UUID, dict] = {}
@@ -79,10 +79,10 @@ def get_turnover_report(
 
 
 def get_merchant_orders_summary(
-        session: Session,
-        merchant_id: UUID,
-        start_date: date,
-        end_date: date,
+    session: Session,
+    merchant_id: UUID,
+    start_date: date,
+    end_date: date,
 ) -> MerchantOrdersSummaryReport:
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
@@ -94,7 +94,7 @@ def get_merchant_orders_summary(
             Order.merchant_id == merchant_id,
             Order.order_date >= start_date,
             Order.order_date <= end_date,
-            )
+        )
         .order_by(Order.order_date)
     ).all()
 
@@ -147,10 +147,10 @@ def get_merchant_orders_summary(
 
 
 def get_merchant_orders_detailed(
-        session: Session,
-        merchant_id: UUID,
-        start_date: date,
-        end_date: date,
+    session: Session,
+    merchant_id: UUID,
+    start_date: date,
+    end_date: date,
 ) -> MerchantOrdersDetailedReport:
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
@@ -162,7 +162,7 @@ def get_merchant_orders_detailed(
             Order.merchant_id == merchant_id,
             Order.order_date >= start_date,
             Order.order_date <= end_date,
-            )
+        )
         .order_by(Order.order_date)
     ).all()
 
@@ -240,10 +240,10 @@ def get_low_stock_report(session: Session) -> LowStockReport:
 
 
 def get_merchant_invoices_report(
-        session: Session,
-        merchant_id: UUID,
-        start_date: date,
-        end_date: date,
+    session: Session,
+    merchant_id: UUID,
+    start_date: date,
+    end_date: date,
 ) -> MerchantInvoicesReport:
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
@@ -255,7 +255,7 @@ def get_merchant_invoices_report(
             Invoice.merchant_id == merchant_id,
             Invoice.invoice_date >= start_date,
             Invoice.invoice_date <= end_date,
-            )
+        )
         .order_by(Invoice.invoice_date)
     ).all()
 
@@ -292,16 +292,16 @@ def get_merchant_invoices_report(
 
 
 def get_all_invoices_report(
-        session: Session,
-        start_date: date,
-        end_date: date,
+    session: Session,
+    start_date: date,
+    end_date: date,
 ) -> AllInvoicesReport:
     invoices = session.exec(
         select(Invoice)
         .where(
             Invoice.invoice_date >= start_date,
             Invoice.invoice_date <= end_date,
-            )
+        )
         .order_by(Invoice.invoice_date)
     ).all()
 
@@ -334,7 +334,7 @@ def get_all_invoices_report(
 
 
 def get_stock_turnover_report(
-        session: Session, start_date: date, end_date: date
+    session: Session, start_date: date, end_date: date
 ) -> StockTurnoverReport:
     products = session.exec(select(Product)).all()
 
@@ -344,7 +344,7 @@ def get_stock_turnover_report(
             select(Order).where(
                 Order.order_date >= start_date,
                 Order.order_date <= end_date,
-                )
+            )
         ).all()
 
         qty_sold = 0
@@ -353,7 +353,7 @@ def get_stock_turnover_report(
                 select(OrderItem).where(
                     OrderItem.order_id == order.id,
                     OrderItem.product_id == p.id,
-                    )
+                )
             ).first()
             if order_item:
                 qty_sold += order_item.quantity
@@ -361,9 +361,11 @@ def get_stock_turnover_report(
         receipts = session.exec(
             select(StockReceipt).where(
                 StockReceipt.product_id == p.id,
-                StockReceipt.received_at >= datetime.combine(start_date, datetime.min.time()),
-                StockReceipt.received_at <= datetime.combine(end_date, datetime.max.time()),
-                )
+                StockReceipt.received_at
+                >= datetime.combine(start_date, datetime.min.time()),
+                StockReceipt.received_at
+                <= datetime.combine(end_date, datetime.max.time()),
+            )
         ).all()
         qty_received = sum(r.quantity_added for r in receipts)
 

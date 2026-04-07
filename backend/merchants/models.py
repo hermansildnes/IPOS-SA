@@ -104,6 +104,7 @@ class MerchantCreate(BaseModel):
 class MerchantFromUserCreate(BaseModel):
     """Used when converting an existing staff user into a merchant account.
     No username/password/email needed since the user already exists."""
+
     company_name: str
     contact_name: str
     contact_email: EmailStr

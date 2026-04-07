@@ -130,6 +130,7 @@ def list_merchants(
         )
 
     from merchants.service import get_all_merchants
+
     return get_all_merchants(session, account_status)
 
 
@@ -165,7 +166,11 @@ def create_merchant(
     return merchant_to_read(session, merchant)
 
 
-@router.post("/convert/{user_id}", response_model=MerchantRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/convert/{user_id}",
+    response_model=MerchantRead,
+    status_code=status.HTTP_201_CREATED,
+)
 def convert_staff_to_merchant(
     user_id: UUID,
     merchant_in: MerchantFromUserCreate,
@@ -188,7 +193,10 @@ def convert_staff_to_merchant(
         target_type="merchant",
         target_id=str(merchant.id),
         target_label=merchant.company_name,
-        detail={"converted_from_staff": True, "account_number": merchant.account_number},
+        detail={
+            "converted_from_staff": True,
+            "account_number": merchant.account_number,
+        },
         ip_address=request.client.host,
     )
 
@@ -390,7 +398,9 @@ def delete_merchant(
     # grab the company name before deletion for the audit log
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Merchant not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Merchant not found"
+        )
 
     company_name = merchant.company_name
 

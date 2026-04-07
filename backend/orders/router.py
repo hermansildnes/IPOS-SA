@@ -9,7 +9,12 @@ from auth.models import User, UserRole
 from auth.service import get_current_user
 from core.database import get_session
 from orders import service
-from orders.models import CreateOrderRequest, Invoice, OrderStatus, UpdateOrderStatusRequest
+from orders.models import (
+    CreateOrderRequest,
+    Invoice,
+    OrderStatus,
+    UpdateOrderStatusRequest,
+)
 
 router = APIRouter()
 
@@ -169,13 +174,12 @@ def get_order_invoice(
                 detail="You can only view invoices for your own orders",
             )
 
-    invoice = session.exec(
-        select(Invoice).where(Invoice.order_id == order_id)
-    ).first()
+    invoice = session.exec(select(Invoice).where(Invoice.order_id == order_id)).first()
 
     if not invoice:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found for this order"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Invoice not found for this order",
         )
 
     return {
