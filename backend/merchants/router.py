@@ -18,6 +18,7 @@ from merchants.models import (
     MerchantRead,
     MerchantUpdate,
     MerchantBalanceRead,
+    BalanceAdjustmentRequest,
     InvoiceCreate,
     InvoiceRead,
 )
@@ -28,6 +29,8 @@ from merchants.service import (
     update_merchant as update_merchant_service,
     merchant_to_read,
     calculate_merchant_balance as calculate_merchant_balance_service,
+    delete_discount_plan as delete_discount_plan_service,
+    adjust_balance as adjust_balance_service,
     create_invoice as create_invoice_service,
     get_merchant_invoices as get_merchant_invoices_service,
     delete_merchant as delete_merchant_service,
@@ -317,6 +320,81 @@ def get_merchant_balance(
     session: Session = Depends(get_session),
 ):
     return calculate_merchant_balance_service(session, merchant_id)
+
+
+@router.delete("/{merchant_id}/discount-plan", response_model=MerchantRead)
+def delete_discount_plan(
+    merchant_id: UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or manager access required",
+        )
+
+    merchant = delete_discount_plan_service(session, merchant_id)
+
+    log_action(
+        session,
+        action=AuditAction.DISCOUNT_PLAN_DELETED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="merchant",
+        target_id=str(merchant_id),
+        target_label=merchant.company_name,
+        ip_address=request.client.host,
+    )
+
+    return merchant_to_read(session, merchant)
+
+
+@router.post("/{merchant_id}/balance/adjust", response_model=MerchantBalanceRead)
+def adjust_balance(
+    merchant_id: UUID,
+    adjustment_in: BalanceAdjustmentRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or manager access required",
+        )
+
+    if not adjustment_in.reason or not adjustment_in.reason.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A reason is required for balance adjustments",
+        )
+
+    if adjustment_in.amount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Adjustment amount cannot be zero",
+        )
+
+    balance = adjust_balance_service(session, merchant_id, adjustment_in, current_user.id)
+
+    # grab company name for the audit label
+    merchant = get_merchant_by_id_service(session, merchant_id)
+
+    log_action(
+        session,
+        action=AuditAction.BALANCE_ADJUSTED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="merchant",
+        target_id=str(merchant_id),
+        target_label=merchant.company_name,
+        detail={"amount": str(adjustment_in.amount), "reason": adjustment_in.reason.strip()},
+        ip_address=request.client.host,
+    )
+
+    return balance
 
 
 @router.get("/{merchant_id}/orders")

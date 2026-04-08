@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
 from merchants.models import (
+    AccountStatus,
     Merchant,
     MerchantCreate,
     MerchantRead,
@@ -16,9 +17,43 @@ from merchants.models import (
     DiscountTier,
     TierRead,
     InvoiceCreate,
+    BalanceAdjustmentRequest,
 )
-
 from orders.models import Order, Invoice
+
+
+def _sync_account_status(session: Session, merchant: Merchant) -> None:
+    """Sync account status based on live outstanding balance. Both directions use the
+    same threshold (credit_limit * 1.05) so the system is 2 ways:
+    - NORMAL -> SUSPENDED  if outstanding >= credit_limit * 1.05 (exceeded the overdraft allowance)
+    - SUSPENDED -> NORMAL  if outstanding <  credit_limit * 1.05 (back within the overdraft buffer)
+    IN_DEFAULT is never auto triggered. I only allow the director to reinstate it"""
+    if merchant.account_status == AccountStatus.IN_DEFAULT:
+        return
+
+    orders = session.exec(select(Order).where(Order.merchant_id == merchant.id)).all()
+    total_orders = sum((o.amount_due for o in orders), Decimal("0.00"))
+
+    payments = session.exec(select(Payment).where(Payment.merchant_id == merchant.id)).all()
+    total_payments = sum((p.amount for p in payments), Decimal("0.00"))
+
+    outstanding = total_orders - total_payments
+    hard_limit = merchant.credit_limit * Decimal("1.05")
+
+    if merchant.account_status == AccountStatus.NORMAL and outstanding >= hard_limit:
+        # exceeded the 5% overdraft buffer - suspend now
+        merchant.account_status = AccountStatus.SUSPENDED
+        merchant.updated_at = datetime.now(timezone.utc)
+        session.add(merchant)
+        session.commit()
+        session.refresh(merchant)
+    elif merchant.account_status == AccountStatus.SUSPENDED and outstanding < hard_limit:
+        # payment has brought outstanding back within the overdraft buffer - auto restore
+        merchant.account_status = AccountStatus.NORMAL
+        merchant.updated_at = datetime.now(timezone.utc)
+        session.add(merchant)
+        session.commit()
+        session.refresh(merchant)
 
 
 def create_merchant(session: Session, merchant_in: MerchantCreate) -> Merchant:
@@ -135,7 +170,10 @@ def _upsert_discount_tiers(session, merchant_id, tiers):
 
 
 def merchant_to_read(session: Session, merchant: Merchant) -> MerchantRead:
-    """Build a MerchantRead DTO that includes flexible tier data if applicable"""
+    """Build a MerchantRead DTO that includes flexible tier data if applicable.
+    Also syncs account status from the live balance before serialising so the
+    response always reflects reality, not just whatever was last written to the db."""
+    _sync_account_status(session, merchant)
     tiers = None
     if merchant.discount_plan_type == DiscountPlanType.FLEXIBLE:
         db_tiers = session.exec(
@@ -277,6 +315,8 @@ def get_all_merchants(session: Session, status: str | None = None):
 
     result = []
     for m in merchants:
+        # sync status first so any over limit accounts show as suspended in the list
+        _sync_account_status(session, m)
         balance = calculate_merchant_balance(session, m.id)
         data = m.model_dump()
         # inject the live calculated balance so the frontend can show accurate debt
@@ -363,6 +403,62 @@ def calculate_merchant_balance(
         outstanding_balance=outstanding_balance,
         available_credit=available_credit,
     )
+
+
+def delete_discount_plan(session: Session, merchant_id: UUID) -> Merchant:
+    """Wipe the merchants discount plan - deletes any flexible tiers and resets to fixed 0%
+    Admin/manager only. Used when a discount plan needs to be removed entirely"""
+    merchant = get_merchant_by_id(session, merchant_id)
+
+    # delete all flexible tiers for this merchant
+    existing_tiers = session.exec(
+        select(DiscountTier).where(DiscountTier.merchant_id == merchant_id)
+    ).all()
+    for tier in existing_tiers:
+        session.delete(tier)
+
+    # reset to fixed plan with 0% - merchant still needs a plan type, just no discount now
+    merchant.discount_plan_type = DiscountPlanType.FIXED
+    merchant.fixed_discount_rate = Decimal("0.00")
+    merchant.updated_at = datetime.now(timezone.utc)
+
+    session.add(merchant)
+    session.commit()
+    session.refresh(merchant)
+    return merchant
+
+
+def adjust_balance(
+    session: Session, merchant_id: UUID, adjustment: BalanceAdjustmentRequest, recorded_by: UUID
+) -> MerchantBalanceRead:
+    """Manually adjust a merchant's balance by creating a payment record.
+    Positive amount = credit (reduces debt), negative amount = debit (adds to debt).
+    This lets admin/manager correct errors without having to create fake orders."""
+    from datetime import date as date_type
+
+    merchant = get_merchant_by_id(session, merchant_id)
+
+    # create a payment record - the balance calculation sums these up automatically
+    # so this immediately affects what calculate_merchant_balance returns
+    payment = Payment(
+        merchant_id=merchant_id,
+        amount=adjustment.amount,
+        payment_date=date_type.today(),
+        payment_method="manual_adjustment",
+        reference_number=adjustment.reason,
+        recorded_by=recorded_by,
+    )
+    session.add(payment)
+    session.commit()
+
+    # sync account status now that the balance has changed - this handles both directions:
+    # a positive adjustment (payment) may restore a suspended account back to normal
+    # a negative adjustment (debit) may push a normal account into suspension
+    session.refresh(merchant)
+    _sync_account_status(session, merchant)
+
+    # return the updated balance so the frontend can show the new figures immediately
+    return calculate_merchant_balance(session, merchant_id)
 
 
 def get_merchant_orders(session: Session, merchant_id: UUID):

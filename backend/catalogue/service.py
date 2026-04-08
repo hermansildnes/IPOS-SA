@@ -98,6 +98,35 @@ def add_stock(
     return product
 
 
+def reduce_stock(
+    product_id: UUID, quantity: int, user_id: UUID, session: Session
+) -> Product:
+    product = get_product(product_id, session)
+
+    # cant reduce below zero - would result in negative stock which makes no sense
+    if product.stock_quantity < quantity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot reduce by {quantity} - only {product.stock_quantity} in stock",
+        )
+
+    product.stock_quantity -= quantity
+    product.updated_at = datetime.now(timezone.utc)
+    session.add(product)
+
+    # reuse StockReceipt to log this but store as a negative quantity so the audit trail is clear
+    receipt = StockReceipt(
+        product_id=product_id,
+        quantity_added=-quantity,
+        received_by=user_id,
+    )
+    session.add(receipt)
+
+    session.commit()
+    session.refresh(product)
+    return product
+
+
 def get_low_stock_products(session: Session) -> list[Product]:
     return list(
         session.exec(

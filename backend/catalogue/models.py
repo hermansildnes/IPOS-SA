@@ -63,3 +63,8 @@ class ProductUpdate(BaseModel):
 
 class AddStockRequest(BaseModel):
     quantity: int = Field(gt=0)
+
+
+class ReduceStockRequest(BaseModel):
+    # quantity to remove from current stock - must be positive, validated against current level in service
+    quantity: int = Field(gt=0)

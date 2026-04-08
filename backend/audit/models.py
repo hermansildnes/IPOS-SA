@@ -35,7 +35,9 @@ class AuditAction(str, enum.Enum):
     PRODUCT_UPDATED = "product_updated"
     PRODUCT_DELETED = "product_deleted"
     STOCK_ADDED = "stock_added"
+    STOCK_REDUCED = "stock_reduced"
     MIN_STOCK_UPDATED = "min_stock_updated"
+    DISCOUNT_PLAN_DELETED = "discount_plan_deleted"
 
     # Orders
     ORDER_PLACED = "order_placed"
@@ -46,6 +48,7 @@ class AuditAction(str, enum.Enum):
 
     # Payments
     PAYMENT_RECORDED = "payment_recorded"
+    BALANCE_ADJUSTED = "balance_adjusted"
 
     # Applications
     APPLICATION_RECEIVED = "application_received"
@@ -87,13 +90,16 @@ ACTION_CATEGORY: dict[AuditAction, AuditCategory] = {
     AuditAction.PRODUCT_UPDATED: AuditCategory.CATALOGUE,
     AuditAction.PRODUCT_DELETED: AuditCategory.CATALOGUE,
     AuditAction.STOCK_ADDED: AuditCategory.CATALOGUE,
+    AuditAction.STOCK_REDUCED: AuditCategory.CATALOGUE,
     AuditAction.MIN_STOCK_UPDATED: AuditCategory.CATALOGUE,
+    AuditAction.DISCOUNT_PLAN_DELETED: AuditCategory.ACCOUNTS,
     AuditAction.ORDER_PLACED: AuditCategory.ORDERS,
     AuditAction.ORDER_STATUS_CHANGED: AuditCategory.ORDERS,
     AuditAction.ORDER_DISPATCHED: AuditCategory.ORDERS,
     AuditAction.ORDER_DELIVERED: AuditCategory.ORDERS,
     AuditAction.INVOICE_GENERATED: AuditCategory.ORDERS,
     AuditAction.PAYMENT_RECORDED: AuditCategory.PAYMENTS,
+    AuditAction.BALANCE_ADJUSTED: AuditCategory.PAYMENTS,
     AuditAction.APPLICATION_RECEIVED: AuditCategory.APPLICATIONS,
     AuditAction.APPLICATION_APPROVED: AuditCategory.APPLICATIONS,
     AuditAction.APPLICATION_REJECTED: AuditCategory.APPLICATIONS,

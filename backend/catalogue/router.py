@@ -8,7 +8,12 @@ from audit.service import log_action
 from auth.models import User, UserRole
 from auth.service import get_current_user
 from catalogue import service
-from catalogue.models import AddStockRequest, ProductCreate, ProductUpdate
+from catalogue.models import (
+    AddStockRequest,
+    ProductCreate,
+    ProductUpdate,
+    ReduceStockRequest,
+)
 from core.database import get_session
 
 router = APIRouter()
@@ -157,6 +162,37 @@ def add_stock(
         target_id=str(product_id),
         target_label=product.name,
         detail={"quantity_added": body.quantity, "new_total": product.stock_quantity},
+        ip_address=request.client.host,
+    )
+
+    return product
+
+
+@router.post("/{product_id}/stock/reduce", status_code=status.HTTP_200_OK)
+def reduce_stock(
+    product_id: UUID,
+    body: ReduceStockRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or manager access required",
+        )
+
+    product = service.reduce_stock(product_id, body.quantity, current_user.id, session)
+
+    log_action(
+        session,
+        action=AuditAction.STOCK_REDUCED,
+        performed_by_id=current_user.id,
+        performed_by_username=current_user.username,
+        target_type="product",
+        target_id=str(product_id),
+        target_label=product.name,
+        detail={"quantity_removed": body.quantity, "new_total": product.stock_quantity},
         ip_address=request.client.host,
     )
 

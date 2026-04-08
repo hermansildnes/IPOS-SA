@@ -165,6 +165,13 @@ class MerchantBalanceRead(BaseModel):
     available_credit: Decimal
 
 
+class BalanceAdjustmentRequest(BaseModel):
+    # positive amount = credit to merchant (reduces their debt)
+    # negative amount = debit (increases their debt, e.g. a correction charge)
+    amount: Decimal
+    reason: str
+
+
 class InvoiceCreate(BaseModel):
     order_id: UUID
     invoice_date: date

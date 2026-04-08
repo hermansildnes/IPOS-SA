@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlmodel import Session, select
 
 from catalogue.models import Product
-from merchants.models import Merchant, DiscountPlanType, DiscountTier, Payment
+from merchants.models import Merchant, AccountStatus, DiscountPlanType, DiscountTier, Payment
 from orders.models import Order, OrderItem, Invoice, OrderStatus
 
 
@@ -110,6 +110,20 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
     if not merchant:
         raise ValueError("Merchant not found")
 
+    # suspended and defaulted accounts cannot place orders at all
+    # suspension is triggered automatically when debt exceeds the credit limit
+    # default is triggered manually after 30+ days of non-payment
+    if merchant.account_status == AccountStatus.SUSPENDED:
+        raise ValueError(
+            "Your account is currently suspended due to an outstanding balance. "
+            "Orders are blocked until payment is received. You have 15 days to pay before your account enters default."
+        )
+    if merchant.account_status == AccountStatus.IN_DEFAULT:
+        raise ValueError(
+            "Your account is in default. New orders cannot be placed. "
+            "Please contact InfoPharma directly to resolve this."
+        )
+
     # an order with no items should not be allowed
     if not items:
         raise ValueError("Order must contain at least one item")
@@ -149,8 +163,7 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
     discount_amount = _calculate_discount(session, merchant, subtotal)
     amount_due = subtotal - discount_amount
 
-    # hard credit limit check - the brief says orders can only go through if the
-    # merchant has enough available credit, so we need to factor in existing debt
+    # credit check - factor in existing debt to get the real available credit
     # available credit = credit limit minus whatever they already owe from past orders
     existing_orders = session.exec(
         select(Order).where(Order.merchant_id == merchant_id)
@@ -165,10 +178,15 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
     outstanding = total_owed - total_paid
     available_credit = merchant.credit_limit - outstanding
 
-    if amount_due > available_credit:
+    # 5% overdraft allowance - orders that push debt slightly over the credit limit
+    # are allowed but immediately trigger account suspension
+    # orders that would exceed the overdraft limit (credit_limit * 1.05) are blocked entirely
+    overdraft_allowance = merchant.credit_limit * Decimal("0.05")
+
+    if amount_due > available_credit + overdraft_allowance:
         raise ValueError(
             f"Order total of £{float(amount_due):.2f} exceeds your available credit "
-            f"of £{float(available_credit):.2f}"
+            f"of £{float(max(available_credit, Decimal('0'))):.2f} (including the 5% overdraft limit)"
         )
 
     # create the main order row first

@@ -106,12 +106,61 @@ def create_order(
             ip_address=request.client.host,
         )
 
+        # after the order is committed, check if the merchants total debt now
+        # exceeds their credit limit - if so, auto suspend the account
+        # the 5% overdraft was already validated in the service, so if we're here
+        # the order is valid - but it may have pushed them over the base limit
+        from decimal import Decimal
+        from merchants.models import AccountStatus
+        from merchants.service import calculate_merchant_balance as calc_balance
+        from datetime import datetime, timezone
+
+        session.refresh(merchant)
+        balance = calc_balance(session, merchant.id)
+
+        # track whether this order triggered an auto suspension so we can warn the merchant
+        account_suspended_now = False
+
+        # use the same threshold as _sync_account_status - suspend when outstanding hits the
+        # 5% overdraft ceiling. this keeps both code paths consistent so a payment that brings
+        # outstanding back under 1.05x will correctly restore the account
+        hard_limit = merchant.credit_limit * Decimal("1.05")
+
+        if balance.outstanding_balance >= hard_limit and merchant.account_status == AccountStatus.NORMAL:
+            # order pushed debt to or beyond the overdraft ceiling - suspend immediately
+            # merchant has 15 days to pay before the account is escalated to in_default
+            merchant.account_status = AccountStatus.SUSPENDED
+            merchant.updated_at = datetime.now(timezone.utc)
+            session.add(merchant)
+            session.commit()
+            account_suspended_now = True
+
+            log_action(
+                session,
+                action=AuditAction.MERCHANT_ACCOUNT_SUSPENDED,
+                performed_by_id=current_user.id,
+                performed_by_username=current_user.username,
+                target_type="merchant",
+                target_id=str(merchant.id),
+                target_label=merchant.company_name,
+                detail={
+                    "reason": "outstanding debt reached the 5% overdraft ceiling after order placement",
+                    "outstanding": str(balance.outstanding_balance),
+                    "credit_limit": str(merchant.credit_limit),
+                    "hard_limit": str(hard_limit),
+                },
+                ip_address=request.client.host,
+            )
+
         return {
             "order_id": str(order.id),
             "message": "Order created successfully",
             "total": float(order.total),
             "discount": float(order.discount_amount),
             "amount_due": float(order.amount_due),
+            # tells the frontend the account was auto suspended by this order
+            # so it can show a clear warning rather than a generic success message
+            "account_suspended": account_suspended_now,
         }
 
     except ValueError as e:
