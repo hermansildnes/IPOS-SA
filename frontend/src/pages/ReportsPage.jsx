@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import reportService from '../services/reportService';
-import { apiClient } from '../services/apiClient';
+import { getAllMerchants } from '../services/merchantService';
 
 // ── PDF generation ──────────────────────────────────────────────────────────
 
@@ -671,7 +671,7 @@ function ReportsPage() {
 
     useEffect(() => {
         if (needsMerchant) {
-            apiClient.get('/merchants').then((data) => {
+            getAllMerchants().then((data) => {
                 setMerchants(data || []);
                 if (data && data.length > 0 && !selectedMerchantId) setSelectedMerchantId(data[0].id);
             }).catch(() => {});

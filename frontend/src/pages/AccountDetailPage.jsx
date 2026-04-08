@@ -9,6 +9,8 @@ import {
   updateMyContactDetails,
   reinstateAccount,
   deleteMerchant,
+  deleteDiscountPlan,
+  adjustMerchantBalance,
 } from '../services/merchantService';
 import { changePassword, changeUserRole } from '../services/authService';
 import { STATUS_STYLES, ROLES, ACCOUNT_STATUS, DISCOUNT_TYPES } from '../utils/constants';
@@ -91,6 +93,16 @@ function AccountDetailPage() {
   // delete merchant modal state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // delete discount plan confirmation state
+  const [showDeletePlanConfirm, setShowDeletePlanConfirm] = useState(false);
+  const [isDeletingPlan, setIsDeletingPlan] = useState(false);
+
+  // balance adjustment form state - shown in the credit card for admin/manager
+  const [showBalanceAdjust, setShowBalanceAdjust] = useState(false);
+  const [balanceAdjustAmount, setBalanceAdjustAmount] = useState('');
+  const [balanceAdjustReason, setBalanceAdjustReason] = useState('');
+  const [isAdjustingBalance, setIsAdjustingBalance] = useState(false);
 
   // convert merchant to staff modal state - admin only
   const [showConvertToStaff, setShowConvertToStaff] = useState(false);
@@ -409,6 +421,70 @@ function AccountDetailPage() {
     const prevLimit = index > 0 ? allTiers[index - 1].limit : 0;
     return `Over £${prevLimit?.toLocaleString() || '0'}`;
   };
+
+  // wipe the merchants discount plan - sets them to fixed 0% with no tiers
+  async function handleDeleteDiscountPlan() {
+    setIsDeletingPlan(true);
+    const result = await deleteDiscountPlan(merchant.id);
+    setIsDeletingPlan(false);
+
+    if (result.success) {
+      setMerchant(result.merchant);
+      // reset formData to match the cleared plan
+      setFormData((prev) => ({
+        ...prev,
+        discountPlanType: 'fixed',
+        fixedDiscountRate: 0,
+        flexibleThresholds: DEFAULT_FLEXIBLE_TIERS,
+      }));
+      setShowDeletePlanConfirm(false);
+      setMessage({ type: 'success', text: 'Discount plan removed — merchant now has no discount' });
+      setTimeout(() => setMessage(null), 3000);
+    } else {
+      setShowDeletePlanConfirm(false);
+      setMessage({ type: 'error', text: result.error || 'Failed to delete discount plan' });
+    }
+  }
+
+  // manually adjust the merchants balance - positive = credit, negative = debit
+  async function handleBalanceAdjust() {
+    const amount = parseFloat(balanceAdjustAmount);
+    if (isNaN(amount) || amount === 0) {
+      setMessage({ type: 'error', text: 'Enter a non-zero adjustment amount' });
+      return;
+    }
+    if (!balanceAdjustReason.trim()) {
+      setMessage({ type: 'error', text: 'A reason is required' });
+      return;
+    }
+
+    setIsAdjustingBalance(true);
+    const result = await adjustMerchantBalance(merchant.id, amount, balanceAdjustReason);
+    setIsAdjustingBalance(false);
+
+    if (result.success) {
+      // update the live balance display with the new figures
+      setLiveBalance({
+        currentDebt: result.currentDebt,
+        availableCredit: result.availableCredit,
+      });
+      setShowBalanceAdjust(false);
+      setBalanceAdjustAmount('');
+      setBalanceAdjustReason('');
+      const direction = amount > 0 ? 'credited' : 'debited';
+      setMessage({ type: 'success', text: `Balance ${direction} by £${Math.abs(amount).toFixed(2)}` });
+      setTimeout(() => setMessage(null), 3000);
+
+      // re fetch the merchant so the account status badge reflects any auto status change
+      // a large credit could restore a suspended account - a debit could suspend a normal one
+      const refreshed = isMerchantSelfView
+        ? await getCurrentMerchant()
+        : await getMerchantById(merchant.id);
+      if (refreshed) setMerchant(refreshed);
+    } else {
+      setMessage({ type: 'error', text: result.error || 'Failed to adjust balance' });
+    }
+  }
 
   const pageTitle = isMerchantSelfView ? 'My Account' : merchant.companyName;
 
@@ -805,6 +881,98 @@ function AccountDetailPage() {
                   £{availableCredit.toLocaleString()}
                 </p>
               </div>
+
+              {/* manual balance adjustment - admin/manager only, not on self-view */}
+              {!isMerchantSelfView && (user?.role === ROLES.ADMIN || user?.role === ROLES.MANAGER) && (
+                <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
+                  {!showBalanceAdjust ? (
+                    <button
+                      onClick={() => setShowBalanceAdjust(true)}
+                      style={{
+                        width: '100%',
+                        background: 'white',
+                        color: '#6366f1',
+                        border: '1px solid #6366f1',
+                        borderRadius: '0.375rem',
+                        padding: '0.375rem 0.75rem',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Adjust Balance
+                    </button>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <p style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                        Positive = credit (reduces debt), negative = debit
+                      </p>
+                      <input
+                        type="number"
+                        value={balanceAdjustAmount}
+                        onChange={(e) => setBalanceAdjustAmount(e.target.value)}
+                        placeholder="Amount (e.g. 150 or -50)"
+                        style={{
+                          padding: '0.375rem 0.5rem',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.8rem',
+                          outline: 'none',
+                        }}
+                      />
+                      <input
+                        type="text"
+                        value={balanceAdjustReason}
+                        onChange={(e) => setBalanceAdjustReason(e.target.value)}
+                        placeholder="Reason (required)"
+                        style={{
+                          padding: '0.375rem 0.5rem',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.8rem',
+                          outline: 'none',
+                        }}
+                      />
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => { setShowBalanceAdjust(false); setBalanceAdjustAmount(''); setBalanceAdjustReason(''); }}
+                          disabled={isAdjustingBalance}
+                          style={{
+                            flex: 1,
+                            padding: '0.375rem',
+                            background: 'white',
+                            color: '#64748b',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleBalanceAdjust}
+                          disabled={isAdjustingBalance}
+                          style={{
+                            flex: 1,
+                            padding: '0.375rem',
+                            background: isAdjustingBalance ? '#cbd5e1' : '#6366f1',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.75rem',
+                            fontWeight: '600',
+                            cursor: isAdjustingBalance ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {isAdjustingBalance ? 'Saving...' : 'Apply'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -818,13 +986,37 @@ function AccountDetailPage() {
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
+              justifyContent: 'space-between',
               marginBottom: '1.25rem',
             }}>
-              <FiPercent size={16} style={{ color: '#6366f1' }} />
-              <h3 style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.9rem' }}>
-                Discount Plan
-              </h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FiPercent size={16} style={{ color: '#6366f1' }} />
+                <h3 style={{ fontWeight: '600', color: '#0f172a', fontSize: '0.9rem' }}>
+                  Discount Plan
+                </h3>
+              </div>
+              {/* delete plan button - admin/manager only, not while editing */}
+              {!isEditing && (user?.role === ROLES.ADMIN || user?.role === ROLES.MANAGER) && (
+                <button
+                  onClick={() => setShowDeletePlanConfirm(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.375rem',
+                    background: '#fee2e2',
+                    color: '#dc2626',
+                    border: '1px solid #fecaca',
+                    borderRadius: '0.375rem',
+                    padding: '0.3rem 0.75rem',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <FiTrash2 size={12} />
+                  Delete Plan
+                </button>
+              )}
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
@@ -1356,6 +1548,39 @@ function AccountDetailPage() {
               </button>
               <button onClick={handleConvertToStaff} disabled={isConverting} style={{ padding: '0.625rem 1.25rem', background: isConverting ? '#bbf7d0' : '#16a34a', color: 'white', border: 'none', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: isConverting ? 'not-allowed' : 'pointer' }}>
                 {isConverting ? 'Converting...' : 'Convert Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* delete discount plan confirmation modal */}
+      {showDeletePlanConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
+          <div style={{ background: 'white', borderRadius: '0.75rem', padding: '2rem', width: '100%', maxWidth: '400px' }}>
+            <h2 style={{ fontSize: '1.125rem', fontWeight: '700', color: '#0f172a', marginBottom: '0.75rem' }}>
+              Delete Discount Plan
+            </h2>
+            <p style={{ fontSize: '0.875rem', color: '#64748b', marginBottom: '0.5rem' }}>
+              This will remove <strong>{merchant.companyName}</strong>'s discount plan and reset them to a fixed 0% rate.
+            </p>
+            <p style={{ fontSize: '0.8rem', color: '#dc2626', marginBottom: '1.5rem' }}>
+              Future orders will have no discount applied until a new plan is set up.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowDeletePlanConfirm(false)}
+                disabled={isDeletingPlan}
+                style={{ padding: '0.625rem 1.25rem', background: 'white', color: '#374151', border: '1px solid #e2e8f0', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteDiscountPlan}
+                disabled={isDeletingPlan}
+                style={{ padding: '0.625rem 1.25rem', background: isDeletingPlan ? '#fca5a5' : '#dc2626', color: 'white', border: 'none', borderRadius: '0.5rem', fontSize: '0.875rem', fontWeight: '600', cursor: isDeletingPlan ? 'not-allowed' : 'pointer' }}
+              >
+                {isDeletingPlan ? 'Removing...' : 'Remove Plan'}
               </button>
             </div>
           </div>

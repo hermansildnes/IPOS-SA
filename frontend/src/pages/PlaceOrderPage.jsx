@@ -10,6 +10,7 @@ import {
   FiArrowLeft,
 } from 'react-icons/fi';
 import { placeOrder } from '../services/orderService';
+import { getCurrentMerchant } from '../services/merchantService';
 import { useAuth } from '../context/AuthContext';
 
 function PlaceOrderPage() {
@@ -26,6 +27,16 @@ function PlaceOrderPage() {
   const [cart, setCart] = useState(initialCart);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
+
+  // check account status upfront so the submit button can be blocked before even trying
+  const [accountStatus, setAccountStatus] = useState(null);
+
+  useEffect(() => {
+    if (!user || user.role !== 'merchant') return;
+    getCurrentMerchant().then((m) => {
+      if (m) setAccountStatus(m.accountStatus);
+    }).catch(() => {});
+  }, [user]);
 
   // Restore cart from storage if page is refreshed or opened directly
   useEffect(() => {
@@ -111,19 +122,27 @@ function PlaceOrderPage() {
       setCart([]);
       localStorage.removeItem(cartStorageKey);
 
-      // show the actual discount the backend calculated
-      const discountInfo = result.discount > 0
-        ? ` Discount applied: £${parseFloat(result.discount).toFixed(2)}.`
-        : '';
-
-      setMessage({
-        type: 'success',
-        text: `Order placed! ID: ${result.orderId.substring(0, 8).toUpperCase()}.${discountInfo}`,
-      });
-
-      setTimeout(() => {
-        navigate('/orders');
-      }, 2000);
+      if (result.accountSuspended) {
+        // order went through but it pushed debt over the credit limit so the account
+        // was auto suspended - this is more urgent than a normal success message
+        // keep them on the page so they actually read the warning before being redirected
+        setAccountStatus('suspended');
+        setMessage({
+          type: 'warning',
+          text: `Order placed (ID: ${result.orderId.substring(0, 8).toUpperCase()}) — but your account has been suspended because this order exceeded your credit limit. You have 15 days to make a payment or your account will enter default and further orders will be permanently blocked.`,
+        });
+        // longer delay so they actually read it - dont rush them to orders page
+        setTimeout(() => navigate('/orders'), 6000);
+      } else {
+        const discountInfo = result.discount > 0
+          ? ` Discount applied: £${parseFloat(result.discount).toFixed(2)}.`
+          : '';
+        setMessage({
+          type: 'success',
+          text: `Order placed! ID: ${result.orderId.substring(0, 8).toUpperCase()}.${discountInfo}`,
+        });
+        setTimeout(() => navigate('/orders'), 2000);
+      }
     } else {
       setMessage({ type: 'error', text: result.error });
       setIsSubmitting(false);
@@ -163,25 +182,28 @@ function PlaceOrderPage() {
         </p>
       </div>
 
-      {/* Success/Error Message */}
+      {/* Success/Error/Warning Message */}
       {message && (
         <div style={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           gap: '0.75rem',
-          background: message.type === 'success' ? '#dcfce7' : '#fee2e2',
-          border: `1px solid ${message.type === 'success' ? '#86efac' : '#fecaca'}`,
-          color: message.type === 'success' ? '#16a34a' : '#dc2626',
+          background: message.type === 'success' ? '#dcfce7' : message.type === 'warning' ? '#fef3c7' : '#fee2e2',
+          border: `1px solid ${message.type === 'success' ? '#86efac' : message.type === 'warning' ? '#fcd34d' : '#fecaca'}`,
+          color: message.type === 'success' ? '#16a34a' : message.type === 'warning' ? '#92400e' : '#dc2626',
           padding: '0.875rem 1.25rem',
           borderRadius: '0.75rem',
           fontSize: '0.875rem',
           fontWeight: '500',
           marginBottom: '1.5rem',
+          lineHeight: '1.5',
         }}>
-          {message.type === 'success'
-            ? <FiCheckCircle size={18} />
-            : <FiAlertCircle size={18} />
-          }
+          <span style={{ flexShrink: 0, marginTop: '0.1rem' }}>
+            {message.type === 'success'
+              ? <FiCheckCircle size={18} />
+              : <FiAlertCircle size={18} />
+            }
+          </span>
           {message.text}
         </div>
       )}
@@ -320,17 +342,39 @@ function PlaceOrderPage() {
                 The final amount depends on your discount plan and monthly order total.
               </div>
 
+              {/* account suspension/default warning - replaces submit button */}
+              {(accountStatus === 'suspended' || accountStatus === 'in_default') && (
+                <div style={{
+                  background: accountStatus === 'in_default' ? '#fee2e2' : '#fef3c7',
+                  border: `1px solid ${accountStatus === 'in_default' ? '#fecaca' : '#fcd34d'}`,
+                  borderRadius: '0.625rem',
+                  padding: '0.875rem',
+                  marginBottom: '0.75rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  color: accountStatus === 'in_default' ? '#dc2626' : '#92400e',
+                }}>
+                  <FiAlertCircle size={16} />
+                  {accountStatus === 'in_default'
+                    ? 'Account in default — orders are blocked. Contact InfoPharma to resolve.'
+                    : 'Account suspended — orders are blocked. Pay your outstanding balance within 15 days or your account will enter default.'}
+                </div>
+              )}
+
               {/* Place Order Button */}
               <button
                 onClick={handleSubmit}
-                disabled={isSubmitting || cart.length === 0}
+                disabled={isSubmitting || cart.length === 0 || accountStatus === 'suspended' || accountStatus === 'in_default'}
                 style={{
                   width: '100%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '0.5rem',
-                  background: isSubmitting
+                  background: (isSubmitting || accountStatus === 'suspended' || accountStatus === 'in_default')
                     ? '#cbd5e1'
                     : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
                   color: 'white',
@@ -339,7 +383,7 @@ function PlaceOrderPage() {
                   padding: '0.875rem',
                   fontSize: '0.875rem',
                   fontWeight: '600',
-                  cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                  cursor: (isSubmitting || accountStatus === 'suspended' || accountStatus === 'in_default') ? 'not-allowed' : 'pointer',
                 }}
               >
                 {isSubmitting ? (

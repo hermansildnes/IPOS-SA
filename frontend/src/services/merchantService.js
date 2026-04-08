@@ -416,6 +416,47 @@ export async function deleteMerchant(merchantId) {
   }
 }
 
+// deleteDiscountPlan - admin/manager only
+// wipes the merchants discount plan - clears any flexible tiers, resets to fixed 0%
+// used when a plan is no longer applicable and needs to be removed entirely
+export async function deleteDiscountPlan(merchantId) {
+  try {
+    const merchant = await apiClient.delete(`/merchants/${merchantId}/discount-plan`);
+    return { success: true, merchant: convertMerchantFromBackend(merchant) };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// adjustMerchantBalance - admin/manager only
+// positive amount = credit to the merchant (reduces their outstanding debt)
+// negative amount = debit (adds to their debt, e.g. a correction charge)
+// creates a payment record behind the scenes so the balance calculation stays accurate
+export async function adjustMerchantBalance(merchantId, amount, reason) {
+  try {
+    if (!reason || !reason.trim()) {
+      return { success: false, error: 'A reason is required for balance adjustments' };
+    }
+    if (amount === 0) {
+      return { success: false, error: 'Adjustment amount cannot be zero' };
+    }
+
+    const balance = await apiClient.post(`/merchants/${merchantId}/balance/adjust`, {
+      amount,
+      reason: reason.trim(),
+    });
+
+    return {
+      success: true,
+      creditLimit: parseFloat(balance.credit_limit),
+      currentDebt: parseFloat(balance.outstanding_balance),
+      availableCredit: parseFloat(balance.available_credit),
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 export default {
   sendCommercialApplication,
   checkCommercialApplication,
@@ -430,4 +471,6 @@ export default {
   getMerchantBalance,
   reinstateAccount,
   deleteMerchant,
+  deleteDiscountPlan,
+  adjustMerchantBalance,
 };

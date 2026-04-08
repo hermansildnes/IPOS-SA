@@ -11,7 +11,7 @@ import {
 } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { queryBalance, viewPreviousOrders } from '../../services/orderService';
-import { apiClient } from '../../services/apiClient';
+import { getCurrentMerchant } from '../../services/merchantService';
 
 // maps order status to a colour and icon for the status badge
 // backend sends lowercase strings so keys must match exactly
@@ -39,8 +39,9 @@ function MerchantDashboard() {
       try {
         setLoading(true);
 
-        // get merchant details including account status and payment reminder fields
-        const merchant = await apiClient.get('/merchants/me');
+        // go through the service layer so we get camelCase fields and the
+        // auto status sync fires on the backend before we read account_status
+        const merchant = await getCurrentMerchant();
 
         // get balance info
         const balance = await queryBalance(merchant.id);
@@ -53,13 +54,12 @@ function MerchantDashboard() {
           creditLimit: balance.creditLimit,
           currentDebt: balance.currentDebt,
           recentOrders: recentOrders,
-          // account status stuff
-          accountStatus: merchant.account_status,
-          // reminder flags from the merchant record
-          status1stReminder: merchant.status_1st_reminder,
-          status2ndReminder: merchant.status_2nd_reminder,
-          date1stReminder: merchant.date_1st_reminder,
-          date2ndReminder: merchant.date_2nd_reminder,
+          // service converts these to camelCase so we dont read snake_case directly
+          accountStatus: merchant.accountStatus,
+          status1stReminder: merchant.status1stReminder,
+          status2ndReminder: merchant.status2ndReminder,
+          date1stReminder: merchant.date1stReminder,
+          date2ndReminder: merchant.date2ndReminder,
         });
       } catch (error) {
         console.error('Failed to load dashboard:', error);
@@ -156,12 +156,12 @@ function MerchantDashboard() {
           <FiLock size={20} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
           <div>
             <p style={{ fontWeight: '700', fontSize: '0.875rem' }}>
-              {isInDefault ? 'Account In Default' : 'Account Suspended'}
+              {isInDefault ? 'Account In Default — Orders Blocked' : 'Account Suspended — Orders Blocked'}
             </p>
             <p style={{ fontSize: '0.8rem', marginTop: '0.2rem', lineHeight: '1.5' }}>
               {isInDefault
-                ? 'Your account is in default. New orders cannot be placed. Please contact InfoPharma to resolve this.'
-                : 'Your account is suspended due to a payment overdue by more than 15 days. Orders are blocked until payment is received.'
+                ? 'Your account is in default and new orders cannot be placed. Restoration requires authorisation from the Director of Operations. Please contact InfoPharma immediately.'
+                : 'Your account has been suspended because your outstanding balance has exceeded your credit limit. New orders are blocked. You have 15 days to make a payment — if no payment is received within that period your account will be set to In Default and restoration will require Director approval.'
               }
             </p>
           </div>

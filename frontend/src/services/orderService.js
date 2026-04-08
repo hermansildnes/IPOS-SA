@@ -46,6 +46,9 @@ export async function placeOrder(items) {
       total: response.total,
       discount: response.discount,
       amountDue: response.amount_due,
+      // backend sets this true when the order itself triggered an account suspension
+      // happens when the order pushed outstanding debt over the credit limit
+      accountSuspended: response.account_suspended === true,
     };
   } catch (error) {
     console.error('place order error:', error);
@@ -179,6 +182,18 @@ export async function addProductStock(productId, quantity) {
   }
 }
 
+// reduceProductStock - admin/manager only, manually removes stock from a product
+// used for write offs, damage corrections or stock audits
+export async function reduceProductStock(productId, quantity) {
+  try {
+    const result = await apiClient.post(`/catalogue/${productId}/stock/reduce`, { quantity });
+    return { success: true, product: result };
+  } catch (error) {
+    console.error('failed to reduce stock:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // getOrderInvoice - fetches the invoice for a specific order
 // available to the merchant who placed the order, and to admin/manager/director
 export async function getOrderInvoice(orderID) {
@@ -297,6 +312,7 @@ export default {
   viewAllOrders,
   getCatalogue,
   addProductStock,
+  reduceProductStock,
   createProduct,
   updateProduct,
   deleteProduct,

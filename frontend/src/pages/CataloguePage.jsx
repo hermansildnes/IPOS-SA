@@ -10,7 +10,8 @@ import {
   FiEdit2,
   FiTrash2,
 } from 'react-icons/fi';
-import { getCatalogue, addProductStock, createProduct, updateProduct, deleteProduct } from '../services/orderService';
+import { getCatalogue, addProductStock, reduceProductStock, createProduct, updateProduct, deleteProduct } from '../services/orderService';
+import { getCurrentMerchant } from '../services/merchantService';
 import { useAuth } from '../context/AuthContext';
 import reportService from '../services/reportService';
 
@@ -29,11 +30,21 @@ function CataloguePage() {
   const [lowStockCount, setLowStockCount] = useState(0);
   const [showLowStockBanner, setShowLowStockBanner] = useState(true);
 
-  // which product's "add stock" form is open (null = none)
+  // which products "add stock" form is open (null = none)
   const [stockModalId, setStockModalId] = useState(null);
   const [stockQty, setStockQty] = useState('');
   const [stockSaving, setStockSaving] = useState(false);
   const [stockMessage, setStockMessage] = useState(null);
+
+  // which products "reduce stock" form is open
+  const [reduceStockModalId, setReduceStockModalId] = useState(null);
+  const [reduceStockQty, setReduceStockQty] = useState('');
+  const [reduceStockSaving, setReduceStockSaving] = useState(false);
+  const [reduceStockMessage, setReduceStockMessage] = useState(null);
+
+  // merchant account status - needed to block ordering if suspended or in default
+  // only fetched for merchant role users, staff dont need this
+  const [merchantAccountStatus, setMerchantAccountStatus] = useState(null);
 
   // product create/edit modal state
   const [productModal, setProductModal] = useState(null); // null or { mode: 'create'|'edit', product }
@@ -76,6 +87,18 @@ function CataloguePage() {
       }
     }).catch(() => {
       // silently ignore - not worth crashing the page over
+    });
+  }, [user]);
+
+  // fetch account status for merchant users so we can block ordering if suspended/defaulted
+  // staff dont need this - they cant order anyway
+  useEffect(() => {
+    if (user?.role !== 'merchant') return;
+
+    getCurrentMerchant().then((m) => {
+      if (m) setMerchantAccountStatus(m.accountStatus);
+    }).catch(() => {
+      // not fatal - just means we cant show the suspended banner
     });
   }, [user]);
 
@@ -190,6 +213,26 @@ function CataloguePage() {
       setStockQty('');
     } else {
       setStockMessage({ id: productId, type: 'error', text: result.error || 'Failed to add stock' });
+    }
+  }
+
+  // submit the stock reduction for a specific product
+  async function handleReduceStock(productId) {
+    const qty = parseInt(reduceStockQty, 10);
+    if (!qty || qty <= 0) {
+      setReduceStockMessage({ id: productId, type: 'error', text: 'Enter a valid quantity' });
+      return;
+    }
+    setReduceStockSaving(true);
+    setReduceStockMessage(null);
+    const result = await reduceProductStock(productId, qty);
+    setReduceStockSaving(false);
+    if (result.success) {
+      await loadProducts();
+      setReduceStockModalId(null);
+      setReduceStockQty('');
+    } else {
+      setReduceStockMessage({ id: productId, type: 'error', text: result.error || 'Failed to reduce stock' });
     }
   }
 
@@ -338,6 +381,53 @@ function CataloguePage() {
           >
             ×
           </button>
+        </div>
+      )}
+
+      {/* account suspension / default banner for merchants - blocks ordering */}
+      {!isStaff && merchantAccountStatus === 'in_default' && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '0.75rem',
+          background: '#fee2e2',
+          border: '2px solid #fca5a5',
+          borderRadius: '0.75rem',
+          padding: '1rem 1.25rem',
+          marginBottom: '1.5rem',
+          color: '#dc2626',
+        }}>
+          <FiAlertCircle size={20} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
+          <div>
+            <p style={{ fontWeight: '700', fontSize: '0.95rem' }}>Account In Default — Orders Blocked</p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.2rem', lineHeight: '1.5' }}>
+              Your account is in default and new orders cannot be placed.
+              Please contact InfoPharma immediately to resolve your outstanding balance.
+            </p>
+          </div>
+        </div>
+      )}
+      {!isStaff && merchantAccountStatus === 'suspended' && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '0.75rem',
+          background: '#fef3c7',
+          border: '1px solid #fcd34d',
+          borderRadius: '0.75rem',
+          padding: '1rem 1.25rem',
+          marginBottom: '1.5rem',
+          color: '#92400e',
+        }}>
+          <FiAlertCircle size={20} style={{ flexShrink: 0, marginTop: '0.1rem' }} />
+          <div>
+            <p style={{ fontWeight: '700', fontSize: '0.875rem' }}>Account Suspended — Orders Blocked</p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.2rem', lineHeight: '1.5' }}>
+              Your account has been suspended because your outstanding balance has exceeded your credit limit.
+              You have 15 days to make a payment. If no payment is received your account will be set to In Default
+              and will require Director approval to restore.
+            </p>
+          </div>
         </div>
       )}
 
@@ -554,6 +644,7 @@ function CataloguePage() {
               onAddToCart={() => addToCart(product)}
               onUpdateQuantity={(qty) => updateCartQuantity(product.id, qty)}
               isStaff={isStaff}
+              merchantAccountStatus={merchantAccountStatus}
               stockModalOpen={stockModalId === product.id}
               onOpenStockModal={() => { setStockModalId(product.id); setStockQty(''); setStockMessage(null); }}
               onCloseStockModal={() => { setStockModalId(null); setStockQty(''); setStockMessage(null); }}
@@ -562,6 +653,14 @@ function CataloguePage() {
               onSubmitStock={() => handleAddStock(product.id)}
               stockSaving={stockSaving}
               stockError={stockMessage?.id === product.id ? stockMessage : null}
+              reduceStockModalOpen={reduceStockModalId === product.id}
+              onOpenReduceStockModal={() => { setReduceStockModalId(product.id); setReduceStockQty(''); setReduceStockMessage(null); }}
+              onCloseReduceStockModal={() => { setReduceStockModalId(null); setReduceStockQty(''); setReduceStockMessage(null); }}
+              reduceStockQty={reduceStockQty}
+              onReduceStockQtyChange={setReduceStockQty}
+              onSubmitReduceStock={() => handleReduceStock(product.id)}
+              reduceStockSaving={reduceStockSaving}
+              reduceStockError={reduceStockMessage?.id === product.id ? reduceStockMessage : null}
               onEdit={() => openEditModal(product)}
               onDelete={() => setDeleteConfirm(product)}
               onBuyMinStock={() => handleBuyMinStock(product)}
@@ -755,10 +854,15 @@ function CataloguePage() {
 // Product Card Component
 function ProductCard({
   product, cartQuantity, onAddToCart, onUpdateQuantity,
-  isStaff, stockModalOpen, onOpenStockModal, onCloseStockModal,
+  isStaff, merchantAccountStatus,
+  stockModalOpen, onOpenStockModal, onCloseStockModal,
   stockQty, onStockQtyChange, onSubmitStock, stockSaving, stockError,
+  reduceStockModalOpen, onOpenReduceStockModal, onCloseReduceStockModal,
+  reduceStockQty, onReduceStockQtyChange, onSubmitReduceStock, reduceStockSaving, reduceStockError,
   onEdit, onDelete, onBuyMinStock,
 }) {
+  // merchant account status determines whether ordering is allowed
+  const isAccountBlocked = merchantAccountStatus === 'suspended' || merchantAccountStatus === 'in_default';
   const isLowStock = product.stockQuantity < product.minStockLevel && product.minStockLevel > 0;
   const isOutOfStock = product.stockQuantity === 0;
 
@@ -936,6 +1040,7 @@ function ProductCard({
 
         {/* Add to Cart / Quantity Controls */}
         {/* staff can't order - show a red disabled button instead of the cart controls */}
+        {/* suspended/defaulted merchants also can't order */}
         {isStaff ? (
           <button
             disabled
@@ -957,6 +1062,31 @@ function ProductCard({
             }}
           >
             Only merchants can place an order
+          </button>
+        ) : isAccountBlocked ? (
+          // account is suspended or in default - show a red blocked button
+          <button
+            disabled
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              background: merchantAccountStatus === 'in_default' ? '#dc2626' : '#d97706',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.5rem',
+              padding: '0.75rem',
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              cursor: 'not-allowed',
+              opacity: 0.9,
+            }}
+          >
+            {merchantAccountStatus === 'in_default'
+              ? 'Account in default — cannot order'
+              : 'Account suspended — cannot order'}
           </button>
         ) : cartQuantity === 0 ? (
           <button
@@ -1114,6 +1244,89 @@ function ProductCard({
                 {stockError && (
                   <p style={{ fontSize: '0.75rem', color: '#dc2626' }}>
                     {stockError.text}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* reduce stock section - only visible to admin and manager */}
+        {isStaff && (
+          <div style={{ marginTop: '0.5rem' }}>
+            {!reduceStockModalOpen ? (
+              <button
+                onClick={onOpenReduceStockModal}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem',
+                  background: 'white',
+                  color: '#dc2626',
+                  border: '1px solid #fecaca',
+                  borderRadius: '0.5rem',
+                  padding: '0.5rem',
+                  fontSize: '0.8rem',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                <FiMinus size={14} />
+                Reduce Stock
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min="1"
+                    value={reduceStockQty}
+                    onChange={(e) => onReduceStockQtyChange(e.target.value)}
+                    placeholder="Qty to remove"
+                    style={{
+                      flex: 1,
+                      padding: '0.5rem 0.625rem',
+                      border: '1px solid #fecaca',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.875rem',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    onClick={onSubmitReduceStock}
+                    disabled={reduceStockSaving}
+                    style={{
+                      background: reduceStockSaving ? '#fca5a5' : '#dc2626',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      padding: '0.5rem 0.875rem',
+                      fontSize: '0.8rem',
+                      fontWeight: '600',
+                      cursor: reduceStockSaving ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {reduceStockSaving ? '...' : 'Remove'}
+                  </button>
+                  <button
+                    onClick={onCloseReduceStockModal}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      fontSize: '1rem',
+                      padding: '0.25rem',
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                {reduceStockError && (
+                  <p style={{ fontSize: '0.75rem', color: '#dc2626' }}>
+                    {reduceStockError.text}
                   </p>
                 )}
               </div>
