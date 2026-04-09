@@ -126,7 +126,10 @@ def create_order(
         # outstanding back under 1.05x will correctly restore the account
         hard_limit = merchant.credit_limit * Decimal("1.05")
 
-        if balance.outstanding_balance >= hard_limit and merchant.account_status == AccountStatus.NORMAL:
+        if (
+            balance.outstanding_balance >= hard_limit
+            and merchant.account_status == AccountStatus.NORMAL
+        ):
             # order pushed debt to or beyond the overdraft ceiling - suspend immediately
             # merchant has 15 days to pay before the account is escalated to in_default
             merchant.account_status = AccountStatus.SUSPENDED

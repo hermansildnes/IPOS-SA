@@ -34,7 +34,9 @@ def _sync_account_status(session: Session, merchant: Merchant) -> None:
     orders = session.exec(select(Order).where(Order.merchant_id == merchant.id)).all()
     total_orders = sum((o.amount_due for o in orders), Decimal("0.00"))
 
-    payments = session.exec(select(Payment).where(Payment.merchant_id == merchant.id)).all()
+    payments = session.exec(
+        select(Payment).where(Payment.merchant_id == merchant.id)
+    ).all()
     total_payments = sum((p.amount for p in payments), Decimal("0.00"))
 
     outstanding = total_orders - total_payments
@@ -47,7 +49,9 @@ def _sync_account_status(session: Session, merchant: Merchant) -> None:
         session.add(merchant)
         session.commit()
         session.refresh(merchant)
-    elif merchant.account_status == AccountStatus.SUSPENDED and outstanding < hard_limit:
+    elif (
+        merchant.account_status == AccountStatus.SUSPENDED and outstanding < hard_limit
+    ):
         # payment has brought outstanding back within the overdraft buffer - auto restore
         merchant.account_status = AccountStatus.NORMAL
         merchant.updated_at = datetime.now(timezone.utc)
@@ -429,7 +433,10 @@ def delete_discount_plan(session: Session, merchant_id: UUID) -> Merchant:
 
 
 def adjust_balance(
-    session: Session, merchant_id: UUID, adjustment: BalanceAdjustmentRequest, recorded_by: UUID
+    session: Session,
+    merchant_id: UUID,
+    adjustment: BalanceAdjustmentRequest,
+    recorded_by: UUID,
 ) -> MerchantBalanceRead:
     """Manually adjust a merchant's balance by creating a payment record.
     Positive amount = credit (reduces debt), negative amount = debit (adds to debt).

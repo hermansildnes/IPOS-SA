@@ -5,7 +5,13 @@ from uuid import UUID
 from sqlmodel import Session, select
 
 from catalogue.models import Product
-from merchants.models import Merchant, AccountStatus, DiscountPlanType, DiscountTier, Payment
+from merchants.models import (
+    Merchant,
+    AccountStatus,
+    DiscountPlanType,
+    DiscountTier,
+    Payment,
+)
 from orders.models import Order, OrderItem, Invoice, OrderStatus
 
 

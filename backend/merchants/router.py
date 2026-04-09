@@ -377,7 +377,9 @@ def adjust_balance(
             detail="Adjustment amount cannot be zero",
         )
 
-    balance = adjust_balance_service(session, merchant_id, adjustment_in, current_user.id)
+    balance = adjust_balance_service(
+        session, merchant_id, adjustment_in, current_user.id
+    )
 
     # grab company name for the audit label
     merchant = get_merchant_by_id_service(session, merchant_id)
@@ -390,7 +392,10 @@ def adjust_balance(
         target_type="merchant",
         target_id=str(merchant_id),
         target_label=merchant.company_name,
-        detail={"amount": str(adjustment_in.amount), "reason": adjustment_in.reason.strip()},
+        detail={
+            "amount": str(adjustment_in.amount),
+            "reason": adjustment_in.reason.strip(),
+        },
         ip_address=request.client.host,
     )
 
