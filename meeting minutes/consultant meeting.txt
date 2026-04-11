@@ -1,0 +1,24 @@
+Consultant meeting 02.04.26
+
+- discussion on tasks completed since last meeting
+- release of scope of demo on Moodle
+- discussion on how demo will be done on demo day 
+	- we are discussing with the other team trying to deploy all subsystems on one computer
+- on the day of the demo we will be one of the first teams to present our demo
+- discuss with other teams how information transferred from each system will be showcased on 		demo day
+- individual reports are an ex†ension of the initial individual diary
+- in individual reports elaborate on why you added a feature or why you implemented it in a 		specific way
+- we will receive a grade on the marking sheet on the day of the demo
+- for testing required look at week 6 lecture slides
+- for subsystem integration testing we are not expected to run tests just expected outcomes and functionality we expect as a result
+
+Consultant meeting 09.04.26
+
+- individual report - each member has to write separately (makes up 25% of the module mark) on how the project actually turned out
+	- includes assessment of other team members
+	- lessons learnt (what we would do differently)
+- for evidence you can point to commits or proof of what you have done in the project
+- 2 classes with 5 methods or more for unit testing
+- perhaps make a presentation plan for demo day
+- prepare our system with the seeding data distributed recently
+- based on this data we need more log in types or look at roles allocated in the footnote of the data page and see if a role we already have fits this description
