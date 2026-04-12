@@ -106,10 +106,17 @@ def create_order(
             ip_address=request.client.host,
         )
 
-        # after the order is committed, check if the merchants total debt now
-        # exceeds their credit limit - if so, auto suspend the account
-        # the 5% overdraft was already validated in the service, so if we're here
-        # the order is valid - but it may have pushed them over the base limit
+        log_action(
+            session,
+            action=AuditAction.INVOICE_GENERATED,
+            performed_by_id=current_user.id,
+            performed_by_username=current_user.username,
+            target_type="order",
+            target_id=str(order.id),
+            target_label=str(order.id)[:8].upper(),
+            ip_address=request.client.host,
+        )
+
         from decimal import Decimal
         from merchants.models import AccountStatus
         from merchants.service import calculate_merchant_balance as calc_balance
@@ -118,20 +125,13 @@ def create_order(
         session.refresh(merchant)
         balance = calc_balance(session, merchant.id)
 
-        # track whether this order triggered an auto suspension so we can warn the merchant
         account_suspended_now = False
-
-        # use the same threshold as _sync_account_status - suspend when outstanding hits the
-        # 5% overdraft ceiling. this keeps both code paths consistent so a payment that brings
-        # outstanding back under 1.05x will correctly restore the account
         hard_limit = merchant.credit_limit * Decimal("1.05")
 
         if (
             balance.outstanding_balance >= hard_limit
             and merchant.account_status == AccountStatus.NORMAL
         ):
-            # order pushed debt to or beyond the overdraft ceiling - suspend immediately
-            # merchant has 15 days to pay before the account is escalated to in_default
             merchant.account_status = AccountStatus.SUSPENDED
             merchant.updated_at = datetime.now(timezone.utc)
             session.add(merchant)
@@ -161,8 +161,6 @@ def create_order(
             "total": float(order.total),
             "discount": float(order.discount_amount),
             "amount_due": float(order.amount_due),
-            # tells the frontend the account was auto suspended by this order
-            # so it can show a clear warning rather than a generic success message
             "account_suspended": account_suspended_now,
         }
 
@@ -207,14 +205,12 @@ def get_order_invoice(
 ):
     from merchants.models import Merchant
 
-    # fetch the order so we can check ownership for merchants
     order = service.get_order(session, order_id)
     if not order:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
         )
 
-    # merchants can only view invoices for their own orders
     if current_user.role == UserRole.MERCHANT:
         merchant = session.exec(
             select(Merchant).where(Merchant.user_id == current_user.id)
@@ -292,6 +288,7 @@ def update_order_status(
             performed_by_username=current_user.username,
             target_type="order",
             target_id=str(order_id),
+            target_label=str(order_id)[:8].upper(),
             detail=detail,
             ip_address=request.client.host,
         )
