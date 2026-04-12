@@ -88,34 +88,40 @@ def decide_application(
     session.commit()
     session.refresh(application)
 
-    if new_status == ApplicationStatus.APPROVED:
-        _notify_applicant(application)
+    _notify_applicant(application, new_status)
 
     return application
 
 
-def _notify_applicant(application: CommercialApplication) -> None:
-    if not settings.IPU_EMAIL_API_URL or not settings.IPU_EMAIL_API_KEY:
+def _notify_applicant(application: CommercialApplication, outcome: ApplicationStatus) -> None:
+    if not settings.IPU_EMAIL_API_URL:
         logger.warning(
-            "IPU email service not configured — skipping approval notification for %s",
+            "IPU email service not configured — skipping outcome notification for %s",
             application.reg_number,
         )
         return
 
-    subject = "Your InfoPharma commercial application has been approved"
-    body = (
-        f"Your commercial application (reg. {application.reg_number}) "
-        f"has been approved. Your account team will be in touch shortly with your login credentials.\n\n"
-        f"Kind regards,\nInfoPharma Ltd"
-    )
+    if outcome == ApplicationStatus.APPROVED:
+        subject = "Your InfoPharma commercial application has been approved"
+        body = (
+            f"Your commercial application (reg. {application.reg_number}) "
+            f"has been approved. Your account team will be in touch shortly with your login credentials.\n\n"
+            f"Kind regards,\nInfoPharma Ltd"
+        )
+    else:
+        subject = "Your InfoPharma commercial application has been unsuccessful"
+        body = (
+            f"Your commercial application (reg. {application.reg_number}) "
+            f"has been reviewed and unfortunately has not been approved at this time.\n\n"
+            f"Kind regards,\nInfoPharma Ltd"
+        )
 
     try:
         response = requests.post(
             settings.IPU_EMAIL_API_URL,
             json={"email": application.email, "subject": subject, "body": body},
-            headers={"X-API-Key": settings.IPU_EMAIL_API_KEY},
             timeout=10,
         )
         response.raise_for_status()
     except Exception as exc:
-        logger.error("Failed to send approval email via IPU: %s", exc)
+        logger.error("Failed to send outcome email via IPU: %s", exc)

@@ -11,7 +11,6 @@ class Settings(BaseSettings):
 
     # IPOS-PU email service
     IPU_EMAIL_API_URL: str = ""
-    IPU_EMAIL_API_KEY: str = ""
 
 
 settings = Settings()
