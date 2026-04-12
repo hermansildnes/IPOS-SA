@@ -31,12 +31,18 @@ def _serialise_order(session: Session, order: Order):
         "merchant_id": str(order.merchant_id),
         "merchant_name": merchant.company_name if merchant else None,
         "order_date": order.order_date.isoformat(),
-        "status": order.status.value if hasattr(order.status, "value") else str(order.status),
+        "status": order.status.value
+        if hasattr(order.status, "value")
+        else str(order.status),
         "total": float(order.total),
         "discount_amount": float(order.discount_amount),
         "amount_due": float(order.amount_due),
-        "dispatched_date": order.dispatched_date.isoformat() if order.dispatched_date else None,
-        "expected_delivery": order.expected_delivery.isoformat() if order.expected_delivery else None,
+        "dispatched_date": order.dispatched_date.isoformat()
+        if order.dispatched_date
+        else None,
+        "expected_delivery": order.expected_delivery.isoformat()
+        if order.expected_delivery
+        else None,
         "courier": order.courier,
         "courier_ref": order.courier_ref,
         "items": [
@@ -55,7 +61,9 @@ def _serialise_order(session: Session, order: Order):
     }
 
 
-def _calculate_discount(session: Session, merchant: Merchant, subtotal: Decimal) -> Decimal:
+def _calculate_discount(
+    session: Session, merchant: Merchant, subtotal: Decimal
+) -> Decimal:
     if merchant.discount_plan_type == DiscountPlanType.FIXED:
         if merchant.fixed_discount_rate is None:
             return Decimal("0.00")

@@ -93,7 +93,9 @@ def decide_application(
     return application
 
 
-def _notify_applicant(application: CommercialApplication, outcome: ApplicationStatus) -> None:
+def _notify_applicant(
+    application: CommercialApplication, outcome: ApplicationStatus
+) -> None:
     if not settings.IPU_EMAIL_API_URL:
         logger.warning(
             "IPU email service not configured — skipping outcome notification for %s",

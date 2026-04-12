@@ -58,14 +58,20 @@ def _sync_account_status(session: Session, merchant: Merchant) -> None:
     days_overdue = 0
     if outstanding > Decimal("0.00") and orders:
         oldest_order_date = min(o.order_date for o in orders)
-        last_day = calendar.monthrange(oldest_order_date.year, oldest_order_date.month)[1]
-        billing_month_end = date_type(oldest_order_date.year, oldest_order_date.month, last_day)
+        last_day = calendar.monthrange(oldest_order_date.year, oldest_order_date.month)[
+            1
+        ]
+        billing_month_end = date_type(
+            oldest_order_date.year, oldest_order_date.month, last_day
+        )
         days_overdue = max(0, (today - billing_month_end).days)
 
     # Auto-escalate SUSPENDED → IN_DEFAULT after 30+ days overdue
     if merchant.account_status == AccountStatus.SUSPENDED and days_overdue > 30:
         merchant.account_status = AccountStatus.IN_DEFAULT
-        merchant.default_reason = f"automatically escalated after {days_overdue} days overdue"
+        merchant.default_reason = (
+            f"automatically escalated after {days_overdue} days overdue"
+        )
         merchant.updated_at = datetime.now(timezone.utc)
         session.add(merchant)
         session.commit()
@@ -120,7 +126,9 @@ def _sync_account_status(session: Session, merchant: Merchant) -> None:
         merchant.account_status = AccountStatus.SUSPENDED
         merchant.updated_at = datetime.now(timezone.utc)
         needs_save = True
-    elif merchant.account_status == AccountStatus.SUSPENDED and outstanding < hard_limit:
+    elif (
+        merchant.account_status == AccountStatus.SUSPENDED and outstanding < hard_limit
+    ):
         # Payment received: restore to normal
         merchant.account_status = AccountStatus.NORMAL
         merchant.updated_at = datetime.now(timezone.utc)
@@ -329,7 +337,10 @@ def convert_user_to_merchant(session: Session, user_id: UUID, data) -> Merchant:
     session.add(merchant)
     session.flush()
 
-    if data.discount_plan_type == DiscountPlanType.FLEXIBLE and data.flexible_thresholds:
+    if (
+        data.discount_plan_type == DiscountPlanType.FLEXIBLE
+        and data.flexible_thresholds
+    ):
         _upsert_discount_tiers(session, merchant.id, data.flexible_thresholds)
 
     user.role = UserRole.MERCHANT
@@ -519,9 +530,7 @@ def create_invoice(
 
 def get_merchant_invoices(session: Session, merchant_id: UUID):
     get_merchant_by_id(session, merchant_id)
-    return session.exec(
-        select(Invoice).where(Invoice.merchant_id == merchant_id)
-    ).all()
+    return session.exec(select(Invoice).where(Invoice.merchant_id == merchant_id)).all()
 
 
 def delete_merchant(session: Session, merchant_id: UUID) -> None:
