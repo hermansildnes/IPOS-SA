@@ -91,17 +91,27 @@ def update_product(
             detail="Admin or manager access required",
         )
 
+    old_product = service.get_product(product_id, session)
+    old_min_stock = old_product.min_stock_level
+
     product = service.update_product(product_id, body, session)
+
+    action = AuditAction.PRODUCT_UPDATED
+    detail: dict = {"product_code": product.product_code}
+    if body.min_stock_level != old_min_stock:
+        action = AuditAction.MIN_STOCK_UPDATED
+        detail["old_min_stock"] = old_min_stock
+        detail["new_min_stock"] = body.min_stock_level
 
     log_action(
         session,
-        action=AuditAction.PRODUCT_UPDATED,
+        action=action,
         performed_by_id=current_user.id,
         performed_by_username=current_user.username,
         target_type="product",
         target_id=str(product_id),
         target_label=product.name,
-        detail={"product_code": product.product_code},
+        detail=detail,
         ip_address=request.client.host,
     )
 

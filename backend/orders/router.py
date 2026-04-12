@@ -321,12 +321,12 @@ def delete_order(
 
         log_action(
             session,
-            action=AuditAction.ORDER_STATUS_CHANGED,
+            action=AuditAction.ORDER_DELETED,
             performed_by_id=current_user.id,
             performed_by_username=current_user.username,
             target_type="order",
             target_id=str(order_id),
-            detail={"action": "deleted"},
+            target_label=str(order_id)[:8].upper(),
             ip_address=request.client.host,
         )
 

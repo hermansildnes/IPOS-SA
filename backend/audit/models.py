@@ -42,6 +42,7 @@ class AuditAction(str, enum.Enum):
     ORDER_STATUS_CHANGED = "order_status_changed"
     ORDER_DISPATCHED = "order_dispatched"
     ORDER_DELIVERED = "order_delivered"
+    ORDER_DELETED = "order_deleted"
     INVOICE_GENERATED = "invoice_generated"
 
     # Payments
@@ -92,6 +93,7 @@ ACTION_CATEGORY: dict[AuditAction, AuditCategory] = {
     AuditAction.ORDER_STATUS_CHANGED: AuditCategory.ORDERS,
     AuditAction.ORDER_DISPATCHED: AuditCategory.ORDERS,
     AuditAction.ORDER_DELIVERED: AuditCategory.ORDERS,
+    AuditAction.ORDER_DELETED: AuditCategory.ORDERS,
     AuditAction.INVOICE_GENERATED: AuditCategory.ORDERS,
     AuditAction.BALANCE_ADJUSTED: AuditCategory.PAYMENTS,
     AuditAction.APPLICATION_RECEIVED: AuditCategory.APPLICATIONS,
