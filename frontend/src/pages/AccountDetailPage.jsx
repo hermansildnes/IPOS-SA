@@ -104,6 +104,14 @@ function AccountDetailPage() {
   const [balanceAdjustReason, setBalanceAdjustReason] = useState('');
   const [isAdjustingBalance, setIsAdjustingBalance] = useState(false);
 
+  // record payment form state - separate from balance adjust, credits only
+  const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentDate, setPaymentDate] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('bank_transfer');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [isRecordingPayment, setIsRecordingPayment] = useState(false);
+
   // convert merchant to staff modal state - admin only
   const [showConvertToStaff, setShowConvertToStaff] = useState(false);
   const [convertToStaffRole, setConvertToStaffRole] = useState('manager');
@@ -483,6 +491,42 @@ function AccountDetailPage() {
       if (refreshed) setMerchant(refreshed);
     } else {
       setMessage({ type: 'error', text: result.error || 'Failed to adjust balance' });
+    }
+  }
+
+  async function handleRecordPayment() {
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setMessage({ type: 'error', text: 'Enter a valid payment amount greater than zero' });
+      return;
+    }
+
+    const methodLabel = { bank_transfer: 'Bank Transfer', cheque: 'Cheque', card: 'Card' }[paymentMethod] || paymentMethod;
+    const parts = [`Payment received - ${methodLabel}`];
+    if (paymentRef.trim()) parts.push(`Ref: ${paymentRef.trim()}`);
+    if (paymentDate) parts.push(`Date: ${paymentDate}`);
+    const reason = parts.join(' - ');
+
+    setIsRecordingPayment(true);
+    const result = await adjustMerchantBalance(merchant.id, amount, reason);
+    setIsRecordingPayment(false);
+
+    if (result.success) {
+      setLiveBalance({ currentDebt: result.currentDebt, availableCredit: result.availableCredit });
+      setShowRecordPayment(false);
+      setPaymentAmount('');
+      setPaymentDate('');
+      setPaymentMethod('bank_transfer');
+      setPaymentRef('');
+      setMessage({ type: 'success', text: `Payment of £${amount.toFixed(2)} recorded successfully` });
+      setTimeout(() => setMessage(null), 3000);
+
+      const refreshed = isMerchantSelfView
+        ? await getCurrentMerchant()
+        : await getMerchantById(merchant.id);
+      if (refreshed) setMerchant(refreshed);
+    } else {
+      setMessage({ type: 'error', text: result.error || 'Failed to record payment' });
     }
   }
 
@@ -882,10 +926,87 @@ function AccountDetailPage() {
                 </p>
               </div>
 
-              {/* manual balance adjustment - admin/manager only, not on self-view */}
+              {/* record payment + balance adjustment - admin/manager only, not on self-view */}
               {!isMerchantSelfView && (user?.role === ROLES.ADMIN || user?.role === ROLES.MANAGER) && (
-                <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
-                  {!showBalanceAdjust ? (
+                <div style={{ paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+
+                  {/* record payment form */}
+                  {!showRecordPayment && !showBalanceAdjust && (
+                    <button
+                      onClick={() => setShowRecordPayment(true)}
+                      style={{
+                        width: '100%',
+                        background: '#16a34a',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '0.375rem',
+                        padding: '0.375rem 0.75rem',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Record Payment
+                    </button>
+                  )}
+
+                  {showRecordPayment && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <p style={{ fontSize: '0.75rem', fontWeight: '600', color: '#16a34a' }}>
+                        Record Received Payment
+                      </p>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={paymentAmount}
+                        onChange={(e) => setPaymentAmount(e.target.value)}
+                        placeholder="Amount received (£)"
+                        style={{ padding: '0.375rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.375rem', fontSize: '0.8rem', outline: 'none' }}
+                      />
+                      <input
+                        type="date"
+                        value={paymentDate}
+                        onChange={(e) => setPaymentDate(e.target.value)}
+                        style={{ padding: '0.375rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.375rem', fontSize: '0.8rem', outline: 'none' }}
+                      />
+                      <select
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        style={{ padding: '0.375rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.375rem', fontSize: '0.8rem', outline: 'none', background: 'white' }}
+                      >
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="card">Card</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={paymentRef}
+                        onChange={(e) => setPaymentRef(e.target.value)}
+                        placeholder="Reference number (optional)"
+                        style={{ padding: '0.375rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.375rem', fontSize: '0.8rem', outline: 'none' }}
+                      />
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          onClick={() => { setShowRecordPayment(false); setPaymentAmount(''); setPaymentDate(''); setPaymentMethod('bank_transfer'); setPaymentRef(''); }}
+                          disabled={isRecordingPayment}
+                          style={{ flex: 1, padding: '0.375rem', background: 'white', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: '0.375rem', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleRecordPayment}
+                          disabled={isRecordingPayment}
+                          style={{ flex: 1, padding: '0.375rem', background: isRecordingPayment ? '#cbd5e1' : '#16a34a', color: 'white', border: 'none', borderRadius: '0.375rem', fontSize: '0.75rem', fontWeight: '600', cursor: isRecordingPayment ? 'not-allowed' : 'pointer' }}
+                        >
+                          {isRecordingPayment ? 'Saving...' : 'Confirm Payment'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* manual balance adjustment */}
+                  {!showRecordPayment && !showBalanceAdjust && (
                     <button
                       onClick={() => setShowBalanceAdjust(true)}
                       style={{
@@ -902,7 +1023,9 @@ function AccountDetailPage() {
                     >
                       Adjust Balance
                     </button>
-                  ) : (
+                  )}
+
+                  {showBalanceAdjust && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                       <p style={{ fontSize: '0.75rem', color: '#64748b' }}>
                         Positive = credit (reduces debt), negative = debit
@@ -912,65 +1035,34 @@ function AccountDetailPage() {
                         value={balanceAdjustAmount}
                         onChange={(e) => setBalanceAdjustAmount(e.target.value)}
                         placeholder="Amount (e.g. 150 or -50)"
-                        style={{
-                          padding: '0.375rem 0.5rem',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '0.375rem',
-                          fontSize: '0.8rem',
-                          outline: 'none',
-                        }}
+                        style={{ padding: '0.375rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.375rem', fontSize: '0.8rem', outline: 'none' }}
                       />
                       <input
                         type="text"
                         value={balanceAdjustReason}
                         onChange={(e) => setBalanceAdjustReason(e.target.value)}
                         placeholder="Reason (required)"
-                        style={{
-                          padding: '0.375rem 0.5rem',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '0.375rem',
-                          fontSize: '0.8rem',
-                          outline: 'none',
-                        }}
+                        style={{ padding: '0.375rem 0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.375rem', fontSize: '0.8rem', outline: 'none' }}
                       />
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
                           onClick={() => { setShowBalanceAdjust(false); setBalanceAdjustAmount(''); setBalanceAdjustReason(''); }}
                           disabled={isAdjustingBalance}
-                          style={{
-                            flex: 1,
-                            padding: '0.375rem',
-                            background: 'white',
-                            color: '#64748b',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: '0.375rem',
-                            fontSize: '0.75rem',
-                            fontWeight: '600',
-                            cursor: 'pointer',
-                          }}
+                          style={{ flex: 1, padding: '0.375rem', background: 'white', color: '#64748b', border: '1px solid #e2e8f0', borderRadius: '0.375rem', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer' }}
                         >
                           Cancel
                         </button>
                         <button
                           onClick={handleBalanceAdjust}
                           disabled={isAdjustingBalance}
-                          style={{
-                            flex: 1,
-                            padding: '0.375rem',
-                            background: isAdjustingBalance ? '#cbd5e1' : '#6366f1',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '0.375rem',
-                            fontSize: '0.75rem',
-                            fontWeight: '600',
-                            cursor: isAdjustingBalance ? 'not-allowed' : 'pointer',
-                          }}
+                          style={{ flex: 1, padding: '0.375rem', background: isAdjustingBalance ? '#cbd5e1' : '#6366f1', color: 'white', border: 'none', borderRadius: '0.375rem', fontSize: '0.75rem', fontWeight: '600', cursor: isAdjustingBalance ? 'not-allowed' : 'pointer' }}
                         >
                           {isAdjustingBalance ? 'Saving...' : 'Apply'}
                         </button>
                       </div>
                     </div>
                   )}
+
                 </div>
               )}
             </div>
