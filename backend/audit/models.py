@@ -16,7 +16,6 @@ class AuditAction(str, enum.Enum):
 
     # User / account management
     USER_CREATED = "user_created"
-    USER_UPDATED = "user_updated"
     USER_DELETED = "user_deleted"
     USER_ROLE_CHANGED = "user_role_changed"
 
@@ -26,7 +25,6 @@ class AuditAction(str, enum.Enum):
     MERCHANT_DELETED = "merchant_deleted"
     MERCHANT_ACCOUNT_SUSPENDED = "merchant_account_suspended"
     MERCHANT_ACCOUNT_RESTORED = "merchant_account_restored"
-    MERCHANT_ACCOUNT_DEFAULTED = "merchant_account_defaulted"
     MERCHANT_CREDIT_LIMIT_CHANGED = "merchant_credit_limit_changed"
     MERCHANT_DISCOUNT_PLAN_CHANGED = "merchant_discount_plan_changed"
 
@@ -47,7 +45,6 @@ class AuditAction(str, enum.Enum):
     INVOICE_GENERATED = "invoice_generated"
 
     # Payments
-    PAYMENT_RECORDED = "payment_recorded"
     BALANCE_ADJUSTED = "balance_adjusted"
 
     # Applications
@@ -75,7 +72,6 @@ ACTION_CATEGORY: dict[AuditAction, AuditCategory] = {
     AuditAction.LOGIN_FAILED: AuditCategory.AUTH,
     AuditAction.PASSWORD_CHANGED: AuditCategory.AUTH,
     AuditAction.USER_CREATED: AuditCategory.ACCOUNTS,
-    AuditAction.USER_UPDATED: AuditCategory.ACCOUNTS,
     AuditAction.USER_DELETED: AuditCategory.ACCOUNTS,
     AuditAction.USER_ROLE_CHANGED: AuditCategory.ACCOUNTS,
     AuditAction.MERCHANT_CREATED: AuditCategory.ACCOUNTS,
@@ -83,7 +79,6 @@ ACTION_CATEGORY: dict[AuditAction, AuditCategory] = {
     AuditAction.MERCHANT_DELETED: AuditCategory.ACCOUNTS,
     AuditAction.MERCHANT_ACCOUNT_SUSPENDED: AuditCategory.ACCOUNTS,
     AuditAction.MERCHANT_ACCOUNT_RESTORED: AuditCategory.ACCOUNTS,
-    AuditAction.MERCHANT_ACCOUNT_DEFAULTED: AuditCategory.ACCOUNTS,
     AuditAction.MERCHANT_CREDIT_LIMIT_CHANGED: AuditCategory.ACCOUNTS,
     AuditAction.MERCHANT_DISCOUNT_PLAN_CHANGED: AuditCategory.ACCOUNTS,
     AuditAction.PRODUCT_CREATED: AuditCategory.CATALOGUE,
@@ -98,7 +93,6 @@ ACTION_CATEGORY: dict[AuditAction, AuditCategory] = {
     AuditAction.ORDER_DISPATCHED: AuditCategory.ORDERS,
     AuditAction.ORDER_DELIVERED: AuditCategory.ORDERS,
     AuditAction.INVOICE_GENERATED: AuditCategory.ORDERS,
-    AuditAction.PAYMENT_RECORDED: AuditCategory.PAYMENTS,
     AuditAction.BALANCE_ADJUSTED: AuditCategory.PAYMENTS,
     AuditAction.APPLICATION_RECEIVED: AuditCategory.APPLICATIONS,
     AuditAction.APPLICATION_APPROVED: AuditCategory.APPLICATIONS,

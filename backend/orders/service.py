@@ -15,26 +15,15 @@ from merchants.models import (
 from orders.models import Order, OrderItem, Invoice, OrderStatus
 
 
-# helper to convert an Order row into the richer response format
-# used by the router/frontend so they get merchant name and item details too
 def _serialise_order(session: Session, order: Order):
-    # get the merchant linked to this order so we can show the company name
     merchant = session.get(Merchant, order.merchant_id)
-
-    # load all order items belonging to this order
     items = session.exec(select(OrderItem).where(OrderItem.order_id == order.id)).all()
-
-    # collect product ids first so we can fetch product names in one go
     product_ids = [item.product_id for item in items]
     product_map = {}
-
-    # only query products if there are actually items on the order
     if product_ids:
         products = session.exec(
             select(Product).where(Product.id.in_(product_ids))
         ).all()
-
-        # map product id -> product for quick lookup when building the response
         product_map = {product.id: product for product in products}
 
     return {
@@ -42,26 +31,18 @@ def _serialise_order(session: Session, order: Order):
         "merchant_id": str(order.merchant_id),
         "merchant_name": merchant.company_name if merchant else None,
         "order_date": order.order_date.isoformat(),
-        # enum safety: use .value when available, otherwise just cast to string
-        "status": order.status.value
-        if hasattr(order.status, "value")
-        else str(order.status),
+        "status": order.status.value if hasattr(order.status, "value") else str(order.status),
         "total": float(order.total),
         "discount_amount": float(order.discount_amount),
         "amount_due": float(order.amount_due),
-        "dispatched_date": order.dispatched_date.isoformat()
-        if order.dispatched_date
-        else None,
-        "expected_delivery": order.expected_delivery.isoformat()
-        if order.expected_delivery
-        else None,
+        "dispatched_date": order.dispatched_date.isoformat() if order.dispatched_date else None,
+        "expected_delivery": order.expected_delivery.isoformat() if order.expected_delivery else None,
         "courier": order.courier,
         "courier_ref": order.courier_ref,
         "items": [
             {
                 "id": str(item.id),
                 "product_id": str(item.product_id),
-                # include product name if the product still exists
                 "product_name": product_map.get(item.product_id).name
                 if product_map.get(item.product_id)
                 else None,
@@ -74,33 +55,22 @@ def _serialise_order(session: Session, order: Order):
     }
 
 
-# helper to work out the discount for this merchant on this subtotal
-# handles both fixed discount plans and flexible tiered plans
-def _calculate_discount(
-    session: Session, merchant: Merchant, subtotal: Decimal
-) -> Decimal:
-    # fixed plan = same rate every time
+def _calculate_discount(session: Session, merchant: Merchant, subtotal: Decimal) -> Decimal:
     if merchant.discount_plan_type == DiscountPlanType.FIXED:
         if merchant.fixed_discount_rate is None:
             return Decimal("0.00")
         return subtotal * (merchant.fixed_discount_rate / Decimal("100"))
 
-    # flexible plan = look up the merchant's discount tiers
     tiers = session.exec(
         select(DiscountTier).where(DiscountTier.merchant_id == merchant.id)
     ).all()
-
-    # no tiers means no discount
     if not tiers:
         return Decimal("0.00")
 
     applicable_rate = Decimal("0.00")
-
-    # find the first tier whose min/max range matches the subtotal
     for tier in tiers:
         min_ok = subtotal >= tier.min_value
         max_ok = tier.max_value is None or subtotal <= tier.max_value
-
         if min_ok and max_ok:
             applicable_rate = tier.discount_rate
             break
@@ -108,17 +78,11 @@ def _calculate_discount(
     return subtotal * (applicable_rate / Decimal("100"))
 
 
-# creates a new order for a given merchant
-# validates stock, calculates totals/discounts, reduces stock nand creates invoice
 def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Order:
-    # make sure the merchant exists first
     merchant = session.get(Merchant, merchant_id)
     if not merchant:
         raise ValueError("Merchant not found")
 
-    # suspended and defaulted accounts cannot place orders at all
-    # suspension is triggered automatically when debt exceeds the credit limit
-    # default is triggered manually after 30+ days of non-payment
     if merchant.account_status == AccountStatus.SUSPENDED:
         raise ValueError(
             "Your account is currently suspended due to an outstanding balance. "
@@ -130,32 +94,25 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
             "Please contact InfoPharma directly to resolve this."
         )
 
-    # an order with no items should not be allowed
     if not items:
         raise ValueError("Order must contain at least one item")
 
     subtotal = Decimal("0.00")
     order_items_to_create = []
 
-    # validate each requested item and calculate subtotal
     for item in items:
         product = session.get(Product, item["product_id"])
         quantity = int(item["quantity"])
 
         if not product:
             raise ValueError("Product not found")
-
         if quantity <= 0:
             raise ValueError("Quantity must be greater than 0")
-
         if product.stock_quantity < quantity:
             raise ValueError(f"Insufficient stock for {product.name}")
 
-        # snapshot the package cost at order time
         cost = product.package_cost * quantity
         subtotal += cost
-
-        # store validated item data so we can create rows after the order exists
         order_items_to_create.append(
             {
                 "product": product,
@@ -165,12 +122,9 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
             }
         )
 
-    # work out merchant-specific discount and final amount due
     discount_amount = _calculate_discount(session, merchant, subtotal)
     amount_due = subtotal - discount_amount
 
-    # credit check - factor in existing debt to get the real available credit
-    # available credit = credit limit minus whatever they already owe from past orders
     existing_orders = session.exec(
         select(Order).where(Order.merchant_id == merchant_id)
     ).all()
@@ -183,10 +137,6 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
 
     outstanding = total_owed - total_paid
     available_credit = merchant.credit_limit - outstanding
-
-    # 5% overdraft allowance - orders that push debt slightly over the credit limit
-    # are allowed but immediately trigger account suspension
-    # orders that would exceed the overdraft limit (credit_limit * 1.05) are blocked entirely
     overdraft_allowance = merchant.credit_limit * Decimal("0.05")
 
     if amount_due > available_credit + overdraft_allowance:
@@ -195,7 +145,6 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
             f"of £{float(max(available_credit, Decimal('0'))):.2f} (including the 5% overdraft limit)"
         )
 
-    # create the main order row first
     order = Order(
         merchant_id=merchant_id,
         order_date=date.today(),
@@ -207,11 +156,8 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
         updated_at=datetime.now(timezone.utc),
     )
     session.add(order)
-
-    # flush so order.id is available for the order items/invoice
     session.flush()
 
-    # create each order item and reduce stock immediately
     for item_data in order_items_to_create:
         item = OrderItem(
             order_id=order.id,
@@ -221,12 +167,9 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
             cost=item_data["cost"],
         )
         session.add(item)
-
-        # reduce product stock by the ordered quantity
         item_data["product"].stock_quantity -= item_data["quantity"]
         session.add(item_data["product"])
 
-    # automatically create an invoice when the order is placed
     invoice = Invoice(
         order_id=order.id,
         merchant_id=merchant_id,
@@ -236,13 +179,11 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
         amount_due=amount_due,
     )
     session.add(invoice)
-
     session.commit()
     session.refresh(order)
     return order
 
 
-# get a single order by id and return the serialised version for the API
 def get_order(session: Session, order_id: UUID):
     order = session.get(Order, order_id)
     if not order:
@@ -250,22 +191,14 @@ def get_order(session: Session, order_id: UUID):
     return _serialise_order(session, order)
 
 
-# get all orders in the system
-# admin/manager use this for the global order history view
 def get_all_orders(session: Session, status_filter: OrderStatus | None = None):
-    # newest orders first
     statement = select(Order).order_by(Order.order_date.desc(), Order.created_at.desc())
-
-    # optional filtering by status
     if status_filter:
         statement = statement.where(Order.status == status_filter)
-
     orders = session.exec(statement).all()
     return [_serialise_order(session, order) for order in orders]
 
 
-# get all orders for one merchant only
-# merchant views and some reports/history views use this
 def get_orders_by_merchant(
     session: Session, merchant_id: UUID, status_filter: OrderStatus | None = None
 ):
@@ -274,17 +207,12 @@ def get_orders_by_merchant(
         .where(Order.merchant_id == merchant_id)
         .order_by(Order.order_date.desc(), Order.created_at.desc())
     )
-
-    # optional filtering by status
     if status_filter:
         statement = statement.where(Order.status == status_filter)
-
     orders = session.exec(statement).all()
     return [_serialise_order(session, order) for order in orders]
 
 
-# update an order's status, enforcing only valid forward transitions
-# also stores dispatch details when the order is dispatched
 def update_order_status(
     session: Session,
     order_id: UUID,
@@ -300,8 +228,6 @@ def update_order_status(
 
     current_status = order.status
 
-    # only allow sensible forward transitions through the workflow
-    # dispatched is the final state staff can set - delivery is confirmed externally
     valid_transitions = {
         OrderStatus.ACCEPTED: [OrderStatus.PROCESSING],
         OrderStatus.PROCESSING: [OrderStatus.DISPATCHED],
@@ -314,13 +240,11 @@ def update_order_status(
             f"Cannot change order from {current_status.value} to {new_status.value}"
         )
 
-    # dispatching needs extra delivery information
     if new_status == OrderStatus.DISPATCHED:
         if not courier or not courier_ref or not expected_delivery:
             raise ValueError(
                 "Courier, tracking reference, and expected delivery are required for dispatch"
             )
-
         order.dispatched_by = dispatched_by
         order.dispatched_date = date.today()
         order.courier = courier
@@ -341,12 +265,10 @@ def delete_order(session: Session, order_id: UUID) -> None:
     if not order:
         raise ValueError("Order not found")
 
-    # delete invoice first because of the foreign key on order_id
     invoice = session.exec(select(Invoice).where(Invoice.order_id == order_id)).first()
     if invoice:
         session.delete(invoice)
 
-    # delete all the line items
     items = session.exec(select(OrderItem).where(OrderItem.order_id == order_id)).all()
     for item in items:
         session.delete(item)

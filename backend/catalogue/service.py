@@ -1,8 +1,11 @@
+from datetime import datetime, timezone
+from uuid import UUID
+
 from fastapi import HTTPException, status
 from sqlmodel import Session, select, or_
-from uuid import UUID
-from datetime import datetime, timezone
 
+from audit.models import AuditAction
+from audit.service import log_action
 from catalogue.models import Product, ProductCreate, ProductUpdate, StockReceipt
 
 
@@ -37,8 +40,11 @@ def create_product(data: ProductCreate, session: Session) -> Product:
     return product
 
 
-def update_product(product_id: UUID, data: ProductUpdate, session: Session) -> Product:
+def update_product(
+    product_id: UUID, data: ProductUpdate, session: Session
+) -> Product:
     product = get_product(product_id, session)
+    product.old_min_stock = product.min_stock_level  # stash for router to read
 
     product.product_code = data.product_code
     product.name = data.name
@@ -81,18 +87,15 @@ def add_stock(
     product_id: UUID, quantity: int, user_id: UUID, session: Session
 ) -> Product:
     product = get_product(product_id, session)
-
     product.stock_quantity += quantity
     product.updated_at = datetime.now(timezone.utc)
     session.add(product)
-
     receipt = StockReceipt(
         product_id=product_id,
         quantity_added=quantity,
         received_by=user_id,
     )
     session.add(receipt)
-
     session.commit()
     session.refresh(product)
     return product
@@ -102,26 +105,20 @@ def reduce_stock(
     product_id: UUID, quantity: int, user_id: UUID, session: Session
 ) -> Product:
     product = get_product(product_id, session)
-
-    # cant reduce below zero - would result in negative stock which makes no sense
     if product.stock_quantity < quantity:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot reduce by {quantity} - only {product.stock_quantity} in stock",
         )
-
     product.stock_quantity -= quantity
     product.updated_at = datetime.now(timezone.utc)
     session.add(product)
-
-    # reuse StockReceipt to log this but store as a negative quantity so the audit trail is clear
     receipt = StockReceipt(
         product_id=product_id,
         quantity_added=-quantity,
         received_by=user_id,
     )
     session.add(receipt)
-
     session.commit()
     session.refresh(product)
     return product
