@@ -1,3 +1,4 @@
+import calendar
 from datetime import date as date_type, datetime, timezone
 from decimal import Decimal
 from uuid import UUID
@@ -13,6 +14,7 @@ from merchants.models import (
     MerchantUpdate,
     MerchantBalanceRead,
     Payment,
+    ReminderStatus,
     DiscountPlanType,
     DiscountTier,
     TierRead,
@@ -23,8 +25,21 @@ from orders.models import Order, Invoice
 
 
 def _sync_account_status(session: Session, merchant: Merchant) -> None:
-    if merchant.account_status == AccountStatus.IN_DEFAULT:
-        return
+    """Sync account status and reminder flags from live balance and payment age.
+
+    Balance-based (immediate):
+      NORMAL -> SUSPENDED  if outstanding >= credit_limit * 1.05
+      SUSPENDED -> NORMAL  if outstanding <  credit_limit * 1.05
+
+    Time-based (derived from oldest billing month with outstanding debt):
+      1–15 days past month-end  -> 1st reminder flag set on merchant dashboard
+      >15 days past month-end   -> 2nd reminder flag set
+      SUSPENDED + >30 days past -> auto-escalate to IN_DEFAULT
+
+    IN_DEFAULT is terminal — only a director reinstatement clears it.
+    """
+    from audit.models import AuditAction
+    from audit.service import log_action
 
     orders = session.exec(select(Order).where(Order.merchant_id == merchant.id)).all()
     total_orders = sum((o.amount_due for o in orders), Decimal("0.00"))
@@ -36,16 +51,82 @@ def _sync_account_status(session: Session, merchant: Merchant) -> None:
 
     outstanding = total_orders - total_payments
     hard_limit = merchant.credit_limit * Decimal("1.05")
+    today = date_type.today()
 
-    if merchant.account_status == AccountStatus.NORMAL and outstanding >= hard_limit:
-        merchant.account_status = AccountStatus.SUSPENDED
+    # Work out how many days past the payment deadline the oldest debt is.
+    # Payment is due by the end of the calendar month in which the order was placed.
+    days_overdue = 0
+    if outstanding > Decimal("0.00") and orders:
+        oldest_order_date = min(o.order_date for o in orders)
+        last_day = calendar.monthrange(oldest_order_date.year, oldest_order_date.month)[1]
+        billing_month_end = date_type(oldest_order_date.year, oldest_order_date.month, last_day)
+        days_overdue = max(0, (today - billing_month_end).days)
+
+    # Auto-escalate SUSPENDED → IN_DEFAULT after 30+ days overdue
+    if merchant.account_status == AccountStatus.SUSPENDED and days_overdue > 30:
+        merchant.account_status = AccountStatus.IN_DEFAULT
+        merchant.default_reason = f"automatically escalated after {days_overdue} days overdue"
         merchant.updated_at = datetime.now(timezone.utc)
         session.add(merchant)
         session.commit()
         session.refresh(merchant)
+        log_action(
+            session,
+            action=AuditAction.MERCHANT_ACCOUNT_DEFAULTED,
+            performed_by_username="system",
+            target_type="merchant",
+            target_id=str(merchant.id),
+            target_label=merchant.company_name,
+            detail={
+                "reason": "automatically escalated after 30+ days overdue",
+                "days_overdue": days_overdue,
+            },
+        )
+        return
+
+    # IN_DEFAULT is terminal: stop here, director must reinstate manually
+    if merchant.account_status == AccountStatus.IN_DEFAULT:
+        return
+
+    needs_save = False
+
+    if outstanding > Decimal("0.00") and days_overdue > 0:
+        # A billing cycle has closed with unpaid balance
+        if merchant.status_1st_reminder != ReminderStatus.DUE:
+            merchant.status_1st_reminder = ReminderStatus.DUE
+            if merchant.date_1st_reminder is None:
+                merchant.date_1st_reminder = today
+            needs_save = True
+
+        # After 15 days escalate to the second (final) reminder
+        if days_overdue > 15 and merchant.status_2nd_reminder != ReminderStatus.DUE:
+            merchant.status_2nd_reminder = ReminderStatus.DUE
+            if merchant.date_2nd_reminder is None:
+                merchant.date_2nd_reminder = today
+            needs_save = True
+    else:
+        # Balance is cleared: remove any reminders that were showing
+        if merchant.status_1st_reminder != ReminderStatus.NO_NEED:
+            merchant.status_1st_reminder = ReminderStatus.NO_NEED
+            merchant.date_1st_reminder = None
+            needs_save = True
+        if merchant.status_2nd_reminder != ReminderStatus.NO_NEED:
+            merchant.status_2nd_reminder = ReminderStatus.NO_NEED
+            merchant.date_2nd_reminder = None
+            needs_save = True
+
+    # Balance-based suspension/restoration
+    if merchant.account_status == AccountStatus.NORMAL and outstanding >= hard_limit:
+        merchant.account_status = AccountStatus.SUSPENDED
+        merchant.updated_at = datetime.now(timezone.utc)
+        needs_save = True
     elif merchant.account_status == AccountStatus.SUSPENDED and outstanding < hard_limit:
+        # Payment received: restore to normal
         merchant.account_status = AccountStatus.NORMAL
         merchant.updated_at = datetime.now(timezone.utc)
+        needs_save = True
+
+    if needs_save:
         session.add(merchant)
         session.commit()
         session.refresh(merchant)
