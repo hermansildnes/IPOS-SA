@@ -9,7 +9,7 @@ from sqlmodel import Field, SQLModel
 
 class OrderStatus(str, enum.Enum):
     ACCEPTED = "accepted"
-    PROCESSING = "processing"
+    READY_TO_DISPATCH = "ready_to_dispatch"
     DISPATCHED = "dispatched"
     DELIVERED = "delivered"
 

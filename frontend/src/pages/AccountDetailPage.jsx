@@ -11,7 +11,10 @@ import {
   deleteMerchant,
   deleteDiscountPlan,
   adjustMerchantBalance,
+  getMerchantPayments,
+  getMyPayments,
 } from '../services/merchantService';
+import { viewPreviousOrders } from '../services/orderService';
 import { changePassword, changeUserRole } from '../services/authService';
 import { STATUS_STYLES, ROLES, ACCOUNT_STATUS, DISCOUNT_TYPES } from '../utils/constants';
 import {
@@ -117,6 +120,70 @@ function AccountDetailPage() {
   const [convertToStaffRole, setConvertToStaffRole] = useState('manager');
   const [isConverting, setIsConverting] = useState(false);
 
+  // transaction history state - orders + payments merged chronologically
+  const [transactions, setTransactions] = useState([]);
+  const [txLoading, setTxLoading] = useState(false);
+
+  // format payment method string into something readable
+  function formatPaymentMethod(method) {
+    const labels = {
+      bank_transfer: 'Bank Transfer',
+      credit_card: 'Credit Card',
+      cheque: 'Cheque',
+      card: 'Card',
+      manual_adjustment: 'Manual Adjustment',
+    };
+    return labels[method] || method;
+  }
+
+  // fetch orders + payments for this merchant, merge and sort by date
+  // calculates a running balance so the table acts like a ledger
+  // merchants use the /me/payments endpoint, admin/manager use /{id}/payments
+  async function loadTransactions(merchantId) {
+    setTxLoading(true);
+    try {
+      const [orders, payments] = await Promise.all([
+        viewPreviousOrders(merchantId),
+        isMerchantSelfView ? getMyPayments() : getMerchantPayments(merchantId),
+      ]);
+
+      const items = [
+        ...orders.map(o => ({
+          id: o.id,
+          type: 'order',
+          date: o.orderDate,
+          amount: o.amountDue,
+          reference: o.id.substring(0, 8).toUpperCase(),
+          status: o.status,
+        })),
+        ...payments.map(p => ({
+          id: p.id,
+          type: 'payment',
+          date: p.paymentDate,
+          amount: p.amount,
+          reference: p.referenceNumber || formatPaymentMethod(p.paymentMethod),
+        })),
+      ];
+
+      // sort oldest first so the running balance makes sense
+      items.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+      // calculate running outstanding balance
+      let balance = 0;
+      const withBalance = items.map(item => {
+        if (item.type === 'order') balance += item.amount;
+        else balance -= item.amount;
+        return { ...item, balance };
+      });
+
+      setTransactions(withBalance);
+    } catch (e) {
+      console.error('failed to load transactions:', e);
+    } finally {
+      setTxLoading(false);
+    }
+  }
+
   useEffect(() => {
     async function loadMerchant() {
       try {
@@ -156,6 +223,9 @@ function AccountDetailPage() {
           } catch (_) {
             // not fatal - just means debt shows as 0
           }
+
+          // load transaction history for all views - merchants see their own, admin/manager see the merchant's
+          loadTransactions(loaded.id);
         }
       } finally {
         setLoading(false);
@@ -339,6 +409,7 @@ function AccountDetailPage() {
       ? await updateMyContactDetails({
           contactEmail: formData.contactEmail,
           contactPhone: formData.contactPhone,
+          address: formData.address,
         })
       : await updateMerchant(merchant.id, formData);
 
@@ -525,6 +596,9 @@ function AccountDetailPage() {
         ? await getCurrentMerchant()
         : await getMerchantById(merchant.id);
       if (refreshed) setMerchant(refreshed);
+
+      // refresh the transaction ledger so the new payment shows up immediately
+      loadTransactions(merchant.id);
     } else {
       setMessage({ type: 'error', text: result.error || 'Failed to record payment' });
     }
@@ -807,11 +881,12 @@ function AccountDetailPage() {
               isEditing={isEditing}
               onChange={(v) => setFormData({ ...formData, contactPhone: v })}
             />
+            {/* address: merchants can update this themselves */}
             <DetailField
               icon={FiMapPin}
               label="Address"
               value={formData.address}
-              isEditing={isEditing && !isMerchantSelfView}
+              isEditing={isEditing}
               onChange={(v) => setFormData({ ...formData, address: v })}
             />
           </div>
@@ -925,6 +1000,27 @@ function AccountDetailPage() {
                   £{availableCredit.toLocaleString()}
                 </p>
               </div>
+
+              {/* 15-day payment warning - shown to the merchant on their own account page when suspended */}
+              {isMerchantSelfView && merchant.accountStatus === ACCOUNT_STATUS.SUSPENDED && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.625rem',
+                  background: '#fef3c7',
+                  border: '1px solid #fcd34d',
+                  borderRadius: '0.5rem',
+                  padding: '0.75rem',
+                  marginTop: '0.5rem',
+                }}>
+                  <FiAlertCircle size={15} style={{ color: '#d97706', flexShrink: 0, marginTop: '0.1rem' }} />
+                  <p style={{ fontSize: '0.78rem', color: '#92400e', lineHeight: '1.5' }}>
+                    <strong>Account suspended.</strong> Your outstanding balance has exceeded your credit limit.
+                    Make a payment within 15 days to avoid your account entering default —
+                    after 30 days only the Director can reinstate it.
+                  </p>
+                </div>
+              )}
 
               {/* record payment + balance adjustment - admin/manager only, not on self-view */}
               {!isMerchantSelfView && (user?.role === ROLES.ADMIN || user?.role === ROLES.MANAGER) && (
@@ -1355,37 +1451,90 @@ function AccountDetailPage() {
         </div>
       </div>
 
-      {/* account metadata footer */}
-      <div style={{
-        background: 'white',
-        borderRadius: '0.75rem',
-        border: '1px solid #e2e8f0',
-        padding: '1.25rem',
-        display: 'flex',
-        gap: '2rem',
-      }}>
-        <div>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Account Created</p>
-          <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#0f172a' }}>
-            {merchant.createdAt || '—'}
-          </p>
-        </div>
-
-        <div>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Last Order</p>
-          <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#0f172a' }}>
-            {merchant.lastOrderDate || 'No orders yet'}
-          </p>
-        </div>
-
-        {merchant.reinstatedAt && (
-          <div>
-            <p style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Last Reinstated</p>
-            <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#0f172a' }}>
-              {new Date(merchant.reinstatedAt).toLocaleDateString()}
-            </p>
+      {/* transaction history - full ledger for all views */}
+      <div style={{ background: 'white', borderRadius: '0.75rem', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          {/* header row with title and account metadata */}
+          <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ fontWeight: '600', color: '#0f172a', margin: 0, fontSize: '0.9375rem' }}>Transaction History</h3>
+            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: '#64748b' }}>
+              <span>Created: {merchant.createdAt ? new Date(merchant.createdAt).toLocaleDateString() : '—'}</span>
+              {merchant.reinstatedAt && (
+                <span>Reinstated: {new Date(merchant.reinstatedAt).toLocaleDateString()}</span>
+              )}
+            </div>
           </div>
-        )}
+
+          {txLoading ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem' }}>
+              Loading transactions...
+            </div>
+          ) : transactions.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.875rem' }}>
+              No transactions yet
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc' }}>
+                    {['Date', 'Type', 'Reference', 'Debit', 'Credit', 'Balance'].map((col, i) => (
+                      <th key={col} style={{
+                        padding: '0.625rem 1rem',
+                        textAlign: i >= 3 ? 'right' : 'left',
+                        fontWeight: '600',
+                        color: '#475569',
+                        borderBottom: '1px solid #e2e8f0',
+                        fontSize: '0.75rem',
+                        letterSpacing: '0.03em',
+                      }}>{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((tx, i) => (
+                    <tr key={tx.id} style={{ borderBottom: i < transactions.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                      <td style={{ padding: '0.625rem 1rem', color: '#475569', whiteSpace: 'nowrap' }}>
+                        {new Date(tx.date).toLocaleDateString()}
+                      </td>
+                      <td style={{ padding: '0.625rem 1rem' }}>
+                        <span style={{
+                          padding: '0.2rem 0.5rem',
+                          borderRadius: '0.25rem',
+                          fontSize: '0.7rem',
+                          fontWeight: '700',
+                          letterSpacing: '0.04em',
+                          background: tx.type === 'order' ? '#dbeafe' : '#dcfce7',
+                          color: tx.type === 'order' ? '#1d4ed8' : '#15803d',
+                        }}>
+                          {tx.type === 'order' ? 'ORDER' : 'PAYMENT'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.625rem 1rem', color: '#0f172a', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                        {tx.reference}
+                        {tx.status && (
+                          <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#94a3b8', fontFamily: 'sans-serif' }}>
+                            {tx.status}
+                          </span>
+                        )}
+                      </td>
+                      {/* debit column - orders only */}
+                      <td style={{ padding: '0.625rem 1rem', textAlign: 'right', color: tx.type === 'order' ? '#dc2626' : 'transparent', fontWeight: '500' }}>
+                        {tx.type === 'order' ? `£${tx.amount.toFixed(2)}` : '—'}
+                      </td>
+                      {/* credit column - payments only */}
+                      <td style={{ padding: '0.625rem 1rem', textAlign: 'right', color: tx.type === 'payment' ? '#16a34a' : 'transparent', fontWeight: '500' }}>
+                        {tx.type === 'payment' ? `£${tx.amount.toFixed(2)}` : '—'}
+                      </td>
+                      {/* running balance */}
+                      <td style={{ padding: '0.625rem 1rem', textAlign: 'right', fontWeight: '600', color: tx.balance > 0.005 ? '#dc2626' : '#16a34a' }}>
+                        £{tx.balance.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
       </div>
 
       {/* director reinstatement modal */}

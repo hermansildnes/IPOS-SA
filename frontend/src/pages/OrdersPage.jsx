@@ -98,7 +98,7 @@ function OrdersPage() {
   const statusCounts = {
     all: orders.length,
     accepted: orders.filter(o => o.status === ORDER_STATUS.ACCEPTED).length,
-    processing: orders.filter(o => o.status === ORDER_STATUS.PROCESSING).length,
+    ready_to_dispatch: orders.filter(o => o.status === ORDER_STATUS.READY_TO_DISPATCH).length,
     dispatched: orders.filter(o => o.status === ORDER_STATUS.DISPATCHED).length,
     delivered: orders.filter(o => o.status === ORDER_STATUS.DELIVERED).length,
   };
@@ -174,11 +174,11 @@ function OrdersPage() {
           color="#3b82f6"
         />
         <StatusFilterCard
-          label="Processing"
-          count={statusCounts.processing}
+          label="Ready to Dispatch"
+          count={statusCounts.ready_to_dispatch}
           icon={FiFilter}
-          active={statusFilter === ORDER_STATUS.PROCESSING}
-          onClick={() => setStatusFilter(ORDER_STATUS.PROCESSING)}
+          active={statusFilter === ORDER_STATUS.READY_TO_DISPATCH}
+          onClick={() => setStatusFilter(ORDER_STATUS.READY_TO_DISPATCH)}
           color="#f59e0b"
         />
         <StatusFilterCard

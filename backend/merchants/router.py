@@ -45,6 +45,7 @@ class ReinstateRequest(BaseModel):
 class MerchantSelfUpdate(BaseModel):
     contact_email: EmailStr | None = None
     contact_phone: str | None = None
+    address: str | None = None
 
 
 router = APIRouter()
@@ -76,6 +77,8 @@ def update_my_merchant(
         merchant.contact_email = update_in.contact_email
     if update_in.contact_phone is not None:
         merchant.contact_phone = update_in.contact_phone
+    if update_in.address is not None:
+        merchant.address = update_in.address
 
     merchant.updated_at = datetime.now(timezone.utc)
     session.add(merchant)
@@ -95,6 +98,49 @@ def update_my_merchant(
     )
 
     return merchant_to_read(session, merchant)
+
+
+@router.get("/me/payments")
+def get_my_payments(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    # merchants can see their own payment history via this self-service endpoint
+    if current_user.role != UserRole.MERCHANT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only merchants can use this endpoint",
+        )
+
+    merchant = session.exec(
+        select(Merchant).where(Merchant.user_id == current_user.id)
+    ).first()
+
+    if not merchant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Merchant account not found"
+        )
+
+    from merchants.models import Payment
+
+    payments = session.exec(
+        select(Payment)
+        .where(Payment.merchant_id == merchant.id)
+        .order_by(Payment.payment_date)
+    ).all()
+
+    return [
+        {
+            "id": str(p.id),
+            "amount": float(p.amount),
+            "payment_date": str(p.payment_date),
+            "payment_method": p.payment_method,
+            "reference_number": p.reference_number,
+            "recorded_by": str(p.recorded_by) if p.recorded_by else None,
+            "created_at": str(p.created_at) if p.created_at else None,
+        }
+        for p in payments
+    ]
 
 
 @router.get("/me")
@@ -463,6 +509,41 @@ def get_merchant_invoices(
     session: Session = Depends(get_session),
 ):
     return get_merchant_invoices_service(session, merchant_id)
+
+
+@router.get("/{merchant_id}/payments")
+def get_merchant_payments(
+    merchant_id: UUID,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    # returns all payment records for a merchant, oldest first
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.DIRECTOR]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin, manager or director access required",
+        )
+
+    from merchants.models import Payment
+
+    payments = session.exec(
+        select(Payment)
+        .where(Payment.merchant_id == merchant_id)
+        .order_by(Payment.payment_date)
+    ).all()
+
+    return [
+        {
+            "id": str(p.id),
+            "amount": float(p.amount),
+            "payment_date": str(p.payment_date),
+            "payment_method": p.payment_method,
+            "reference_number": p.reference_number,
+            "recorded_by": str(p.recorded_by) if p.recorded_by else None,
+            "created_at": str(p.created_at) if p.created_at else None,
+        }
+        for p in payments
+    ]
 
 
 @router.delete("/{merchant_id}", status_code=status.HTTP_204_NO_CONTENT)

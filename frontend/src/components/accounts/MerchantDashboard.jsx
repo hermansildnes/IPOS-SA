@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   FiShoppingCart,
   FiAlertCircle,
@@ -18,7 +19,7 @@ import { getCurrentMerchant } from '../../services/merchantService';
 const ORDER_STATUS_STYLES = {
   delivered: { color: '#16a34a', bg: '#dcfce7', icon: FiCheckCircle },
   dispatched: { color: '#2563eb', bg: '#dbeafe', icon: FiTruck },
-  processing: { color: '#d97706', bg: '#fef3c7', icon: FiClock },
+  ready_to_dispatch: { color: '#d97706', bg: '#fef3c7', icon: FiClock },
   accepted: { color: '#7c3aed', bg: '#ede9fe', icon: FiCheckCircle },
 };
 
@@ -31,6 +32,7 @@ const ACCOUNT_STATUS_STYLES = {
 
 function MerchantDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [merchantData, setMerchantData] = useState(null);
 
@@ -213,8 +215,10 @@ function MerchantDashboard() {
               Credit limit warning
             </p>
             <p style={{ fontSize: '0.8rem', marginTop: '0.1rem' }}>
-              You've used {debtPercentage.toFixed(0)}% of your credit limit.
-              Please make a payment to avoid account suspension.
+              {debtPercentage >= 100
+                ? `You've reached your credit limit (${debtPercentage.toFixed(0)}% used). Make a payment within 15 days to avoid account suspension.`
+                : `You've used ${debtPercentage.toFixed(0)}% of your credit limit. Make a payment soon to avoid suspension.`
+              }
             </p>
           </div>
         </div>
@@ -374,7 +378,7 @@ function MerchantDashboard() {
             </h3>
           </div>
           <button
-            onClick={() => window.location.href = '/orders'}
+            onClick={() => navigate('/orders')}
             style={{
               background: 'none',
               border: 'none',

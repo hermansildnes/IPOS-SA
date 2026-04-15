@@ -252,7 +252,7 @@ function firstOfMonth() {
 // ── shared UI ────────────────────────────────────────────────────────────────
 
 function StatusBadge({ value }) {
-    const map = { accepted: 'bg-blue-100 text-blue-800', processing: 'bg-purple-100 text-purple-800', dispatched: 'bg-orange-100 text-orange-800', delivered: 'bg-green-100 text-green-800' };
+    const map = { accepted: 'bg-blue-100 text-blue-800', ready_to_dispatch: 'bg-yellow-100 text-yellow-800', dispatched: 'bg-orange-100 text-orange-800', delivered: 'bg-green-100 text-green-800' };
     return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${map[value] || 'bg-gray-100 text-gray-700'}`}>{value}</span>;
 }
 

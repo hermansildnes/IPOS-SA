@@ -144,13 +144,16 @@ def create_order(session: Session, merchant_id: UUID, items: list[dict]) -> Orde
     total_paid = sum((p.amount for p in existing_payments), Decimal("0.00"))
 
     outstanding = total_owed - total_paid
-    available_credit = merchant.credit_limit - outstanding
-    overdraft_allowance = merchant.credit_limit * Decimal("0.05")
 
-    if amount_due > available_credit + overdraft_allowance:
+    # hard block at 10% overdraft - orders are rejected if they would push past this ceiling
+    # the 5% threshold triggers suspension separately but does not block the order itself
+    hard_cap = merchant.credit_limit * Decimal("1.10")
+
+    if outstanding + amount_due > hard_cap:
+        available_credit = merchant.credit_limit - outstanding
         raise ValueError(
-            f"Order total of £{float(amount_due):.2f} exceeds your available credit "
-            f"of £{float(max(available_credit, Decimal('0'))):.2f} (including the 5% overdraft limit)"
+            f"Order total of £{float(amount_due):.2f} would exceed the maximum credit allowance "
+            f"(available: £{float(max(available_credit, Decimal('0'))):.2f}, hard cap: 10% overdraft)"
         )
 
     order = Order(
@@ -237,8 +240,8 @@ def update_order_status(
     current_status = order.status
 
     valid_transitions = {
-        OrderStatus.ACCEPTED: [OrderStatus.PROCESSING],
-        OrderStatus.PROCESSING: [OrderStatus.DISPATCHED],
+        OrderStatus.ACCEPTED: [OrderStatus.READY_TO_DISPATCH],
+        OrderStatus.READY_TO_DISPATCH: [OrderStatus.DISPATCHED],
         OrderStatus.DISPATCHED: [OrderStatus.DELIVERED],
         OrderStatus.DELIVERED: [],
     }

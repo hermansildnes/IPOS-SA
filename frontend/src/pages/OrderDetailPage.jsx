@@ -82,14 +82,14 @@ function OrderDetailPage() {
   // four stages an order moves through - staff can now advance all the way to delivered
   const statusSteps = [
     { key: ORDER_STATUS.ACCEPTED, label: 'Accepted', icon: FiCheckCircle, color: '#10b981' },
-    { key: ORDER_STATUS.PROCESSING, label: 'Processing', icon: FiPackage, color: '#f59e0b' },
+    { key: ORDER_STATUS.READY_TO_DISPATCH, label: 'Ready to Dispatch', icon: FiPackage, color: '#f59e0b' },
     { key: ORDER_STATUS.DISPATCHED, label: 'Dispatched', icon: FiTruck, color: '#3b82f6' },
     { key: ORDER_STATUS.DELIVERED, label: 'Delivered', icon: FiCheckCircle, color: '#10b981' },
   ];
 
   const statusIndexMap = {
     accepted: 0,
-    processing: 1,
+    ready_to_dispatch: 1,
     dispatched: 2,
     delivered: 3,
   };
@@ -98,8 +98,8 @@ function OrderDetailPage() {
 
   // figure out what status comes after the current one - delivered is the final state
   const nextStatusMap = {
-    accepted: ORDER_STATUS.PROCESSING,
-    processing: ORDER_STATUS.DISPATCHED,
+    accepted: ORDER_STATUS.READY_TO_DISPATCH,
+    ready_to_dispatch: ORDER_STATUS.DISPATCHED,
     dispatched: ORDER_STATUS.DELIVERED,
     delivered: null,
   };
@@ -111,9 +111,25 @@ function OrderDetailPage() {
     if (!nextStatus) return;
 
     // dispatch step needs extra info
-    if (order.status?.toLowerCase() === ORDER_STATUS.PROCESSING) {
+    if (order.status?.toLowerCase() === ORDER_STATUS.READY_TO_DISPATCH) {
       if (!dispatchForm.courierName.trim()) {
         setStatusMessage({ type: 'error', text: 'Courier name is required to dispatch an order' });
+        return;
+      }
+      if (!dispatchForm.trackingNumber.trim()) {
+        setStatusMessage({ type: 'error', text: 'Tracking reference is required to dispatch an order' });
+        return;
+      }
+      if (!dispatchForm.expectedDeliveryDate) {
+        setStatusMessage({ type: 'error', text: 'Expected delivery date is required to dispatch an order' });
+        return;
+      }
+      // expected delivery must be a future date - not today not the past
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const deliveryDate = new Date(dispatchForm.expectedDeliveryDate);
+      if (deliveryDate <= today) {
+        setStatusMessage({ type: 'error', text: 'Expected delivery date must be in the future' });
         return;
       }
     }
@@ -896,7 +912,7 @@ function OrderDetailPage() {
                 </div>
 
                 {/* dispatch details form - only needed when marking as dispatched */}
-                {order.status?.toLowerCase() === ORDER_STATUS.PROCESSING && (
+                {order.status?.toLowerCase() === ORDER_STATUS.READY_TO_DISPATCH && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem', marginBottom: '0.75rem' }}>
                     <div>
                       <label style={{
@@ -963,6 +979,7 @@ function OrderDetailPage() {
                       <input
                         type="date"
                         value={dispatchForm.expectedDeliveryDate}
+                        min={(() => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })()}
                         onChange={(e) => setDispatchForm({ ...dispatchForm, expectedDeliveryDate: e.target.value })}
                         style={{
                           width: '100%',

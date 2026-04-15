@@ -1011,32 +1011,38 @@ function ProductCard({
           </div>
         </div>
 
-        {/* buy minimum stock button - shown to staff when stock is below the minimum threshold */}
-        {isStaff && isLowStock && (
-          <button
-            onClick={onBuyMinStock}
-            disabled={stockSaving}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              background: '#fef3c7',
-              color: '#92400e',
-              border: '1px solid #fcd34d',
-              borderRadius: '0.5rem',
-              padding: '0.5rem',
-              fontSize: '0.8rem',
-              fontWeight: '600',
-              cursor: stockSaving ? 'not-allowed' : 'pointer',
-              marginBottom: '0.75rem',
-            }}
-          >
-            <FiPlus size={14} />
-            Buy Minimum Stock (+{product.minStockLevel - product.stockQuantity} units)
-          </button>
-        )}
+        {/* buy minimum stock button - always shown to staff when a min level is set */}
+        {isStaff && product.minStockLevel > 0 && (() => {
+          const needed = product.minStockLevel - product.stockQuantity;
+          const atMin = needed <= 0;
+          return (
+            <button
+              onClick={atMin ? undefined : onBuyMinStock}
+              disabled={atMin || stockSaving}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.5rem',
+                background: atMin ? '#f1f5f9' : '#fef3c7',
+                color: atMin ? '#94a3b8' : '#92400e',
+                border: `1px solid ${atMin ? '#e2e8f0' : '#fcd34d'}`,
+                borderRadius: '0.5rem',
+                padding: '0.5rem',
+                fontSize: '0.8rem',
+                fontWeight: '600',
+                cursor: atMin || stockSaving ? 'not-allowed' : 'pointer',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <FiPlus size={14} />
+              {atMin
+                ? `At Minimum Stock (${product.minStockLevel})`
+                : `Buy to Minimum (+${needed} units)`}
+            </button>
+          );
+        })()}
 
         {/* Add to Cart / Quantity Controls */}
         {/* staff can't order - show a red disabled button instead of the cart controls */}

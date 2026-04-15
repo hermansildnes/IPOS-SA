@@ -45,6 +45,8 @@ class AuditAction(str, enum.Enum):
     ORDER_DELETED = "order_deleted"
     INVOICE_GENERATED = "invoice_generated"
 
+    MERCHANT_ACCOUNT_DEFAULTED = "merchant_account_defaulted"
+
     # Payments
     BALANCE_ADJUSTED = "balance_adjusted"
 
@@ -95,6 +97,7 @@ ACTION_CATEGORY: dict[AuditAction, AuditCategory] = {
     AuditAction.ORDER_DELIVERED: AuditCategory.ORDERS,
     AuditAction.ORDER_DELETED: AuditCategory.ORDERS,
     AuditAction.INVOICE_GENERATED: AuditCategory.ORDERS,
+    AuditAction.MERCHANT_ACCOUNT_DEFAULTED: AuditCategory.ACCOUNTS,
     AuditAction.BALANCE_ADJUSTED: AuditCategory.PAYMENTS,
     AuditAction.APPLICATION_RECEIVED: AuditCategory.APPLICATIONS,
     AuditAction.APPLICATION_APPROVED: AuditCategory.APPLICATIONS,

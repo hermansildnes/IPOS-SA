@@ -37,7 +37,7 @@ export const ROLE_COLORS = {
 // Order status constants
 export const ORDER_STATUS = {
   ACCEPTED: 'accepted',
-  PROCESSING: 'processing',
+  READY_TO_DISPATCH: 'ready_to_dispatch',
   DISPATCHED: 'dispatched',
   DELIVERED: 'delivered',
 };
@@ -49,10 +49,10 @@ export const ORDER_STATUS_STYLES = {
     color: '#1e40af',
     label: 'Accepted'
   },
-  processing: {
+  ready_to_dispatch: {
     bg: '#fef3c7',
     color: '#92400e',
-    label: 'Processing'
+    label: 'Ready to Dispatch'
   },
   dispatched: {
     bg: '#e0e7ff',

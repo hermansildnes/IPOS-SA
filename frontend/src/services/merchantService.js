@@ -329,6 +329,7 @@ export async function updateMyContactDetails(updates) {
     const backendUpdates = {};
     if (updates.contactEmail !== undefined) backendUpdates.contact_email = updates.contactEmail;
     if (updates.contactPhone !== undefined) backendUpdates.contact_phone = updates.contactPhone;
+    if (updates.address !== undefined) backendUpdates.address = updates.address;
 
     const merchant = await apiClient.patch('/merchants/me', backendUpdates);
     return {
@@ -457,6 +458,46 @@ export async function adjustMerchantBalance(merchantId, amount, reason) {
   }
 }
 
+// get all payment records for a merchant - admin/manager/director only
+export async function getMerchantPayments(merchantId) {
+  try {
+    const payments = await apiClient.get(`/merchants/${merchantId}/payments`);
+    return payments.map(p => ({
+      id: p.id,
+      amount: parseFloat(p.amount),
+      paymentDate: p.payment_date,
+      paymentMethod: p.payment_method,
+      referenceNumber: p.reference_number,
+      recordedBy: p.recorded_by,
+      createdAt: p.created_at,
+    }));
+  } catch (error) {
+    console.error('failed to get merchant payments:', error);
+    return [];
+  }
+}
+
+// getMyPayments - merchant self-service version of getMerchantPayments
+// hits /me/payments so merchants can see their own payment history
+// admin/manager use getMerchantPayments(id) instead
+export async function getMyPayments() {
+  try {
+    const payments = await apiClient.get('/merchants/me/payments');
+    return payments.map(p => ({
+      id: p.id,
+      amount: parseFloat(p.amount),
+      paymentDate: p.payment_date,
+      paymentMethod: p.payment_method,
+      referenceNumber: p.reference_number,
+      recordedBy: p.recorded_by,
+      createdAt: p.created_at,
+    }));
+  } catch (error) {
+    console.error('failed to get own payment history:', error);
+    return [];
+  }
+}
+
 export default {
   sendCommercialApplication,
   checkCommercialApplication,
@@ -473,4 +514,6 @@ export default {
   deleteMerchant,
   deleteDiscountPlan,
   adjustMerchantBalance,
+  getMerchantPayments,
+  getMyPayments,
 };

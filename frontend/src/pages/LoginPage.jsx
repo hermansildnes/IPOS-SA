@@ -326,10 +326,7 @@ function LoginPage() {
             </button>
           </form>
 
-          {/* Quick fill buttons for test credentials
-              Color coding helps identify roles at a glance:
-              Red = Admin, Amber = Director, Green = Manager, Indigo = Merchant
-              TODO: Remove this entire section before the final demo */}
+          {/* quick fill buttons for testing */}
           <div style={{
             marginTop: '1.5rem',
             paddingTop: '1.5rem',
@@ -344,62 +341,71 @@ function LoginPage() {
             }}>
               TEST CREDENTIALS
             </p>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '0.5rem'
-            }}>
+            {/* staff */}
+            <p style={{ fontSize: '0.65rem', color: '#6b7280', marginBottom: '0.4rem', letterSpacing: '0.05em' }}>STAFF</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', marginBottom: '0.75rem' }}>
               {[
-                { role: 'Admin', user: 'admin', pass: 'admin123', color: '#ef4444' },
-                { role: 'Director', user: 'director', pass: 'director123', color: '#f59e0b' },
-                { role: 'Manager', user: 'manager', pass: 'manager123', color: '#10b981' },
-                {
-                  role: 'Merchant',
-                  user: 'merchant1',
-                  // read the stored password in case merchant1 changed it via My Account
-                  pass: localStorage.getItem('ipos_test_pass_merchant1') || 'merchant123',
-                  color: '#6366f1',
-                },
+                { role: 'Admin',      user: 'Sysdba',     pass: 'London_weighting', color: '#ef4444' },
+                { role: 'Director',   user: 'manager',    pass: 'Get_it_done',      color: '#f59e0b' },
+                { role: 'Accountant', user: 'accountant', pass: 'Count_money',      color: '#10b981' },
+                { role: 'Clerk',      user: 'clerk',      pass: 'Paperwork',        color: '#10b981' },
+                { role: 'Warehouse1', user: 'warehouse1', pass: 'Get_a_beer',       color: '#10b981' },
+                { role: 'Warehouse2', user: 'warehouse2', pass: 'Lot_smell',        color: '#10b981' },
+                { role: 'Delivery',   user: 'delivery',   pass: 'Too_dark',         color: '#10b981' },
               ].map((cred) => (
-                // Clicking a credential card auto fills the form above
-                // so testers don't have to type credentials manually
                 <button
-                  key={cred.role}
-                  onClick={() => {
-                    setUsername(cred.user);
-                    setPassword(cred.pass);
-                  }}
+                  key={cred.user}
+                  onClick={() => { setUsername(cred.user); setPassword(cred.pass); }}
                   style={{
                     textAlign: 'left',
-                    padding: '0.625rem 0.75rem',
+                    padding: '0.5rem 0.625rem',
                     background: 'rgba(255,255,255,0.05)',
                     border: '1px solid rgba(255,255,255,0.1)',
                     borderRadius: '0.625rem',
                     cursor: 'pointer',
                     transition: 'all 0.2s'
                   }}
-                  // Hover effect - slightly lighter background on mouse over
                   onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                 >
-                  <p style={{
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                    color: cred.color,
-                    marginBottom: '0.1rem'
-                  }}>
-                    {cred.role}
-                  </p>
-                  <p style={{ fontSize: '0.7rem', color: '#9ca3af' }}>
-                    {cred.user}
-                  </p>
+                  <p style={{ fontSize: '0.7rem', fontWeight: '600', color: cred.color, marginBottom: '0.1rem' }}>{cred.role}</p>
+                  <p style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{cred.user}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* merchants */}
+            <p style={{ fontSize: '0.65rem', color: '#6b7280', marginBottom: '0.4rem', letterSpacing: '0.05em' }}>MERCHANTS</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem' }}>
+              {[
+                { role: 'CityPharmacy', user: 'city',    pass: 'northampton', color: '#818cf8' },
+                { role: 'Cosymed',      user: 'cosymed', pass: 'bondstreet',  color: '#818cf8' },
+                { role: 'HelloPharmacy',user: 'hello',   pass: 'there',       color: '#818cf8' },
+              ].map((cred) => (
+                <button
+                  key={cred.user}
+                  onClick={() => { setUsername(cred.user); setPassword(cred.pass); }}
+                  style={{
+                    textAlign: 'left',
+                    padding: '0.5rem 0.625rem',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '0.625rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                >
+                  <p style={{ fontSize: '0.7rem', fontWeight: '600', color: cred.color, marginBottom: '0.1rem' }}>{cred.role}</p>
+                  <p style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{cred.user}</p>
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Page footer */}
+        {/* footer */}
         <p style={{
           textAlign: 'center',
           color: '#4b5563',
@@ -410,9 +416,7 @@ function LoginPage() {
         </p>
       </div>
 
-      {/* Global styles injected here:
-          spin = the rotation animation used by the loading spinner
-          input::placeholder = makes placeholder text semi-transparent white */}
+      {/* global styles - spin animation and placeholder colour */}
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
