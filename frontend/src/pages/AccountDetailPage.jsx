@@ -37,12 +37,17 @@ import {
 // helper to convert backend threshold format to the simpler frontend format
 // backend gives { up_to: X, rate: Y } or { above: X, rate: Y }
 // we use { limit: X|null, rate: Y } where null = open-ended last tier
+// NOTE: pydantic v2 serialises Decimal as strings in json, so we parseFloat both
+// fields here to avoid string comparisons blowing up validateTiers later
 function parseThresholdsFromBackend(raw) {
   if (!raw || !Array.isArray(raw)) return [];
-  return raw.map((t) => ({
-    limit: t.upTo ?? t.up_to ?? null,
-    rate: t.rate ?? 0,
-  }));
+  return raw.map((t) => {
+    const upTo = t.upTo ?? t.up_to;
+    return {
+      limit: upTo != null ? parseFloat(upTo) : null,
+      rate: parseFloat(t.rate ?? 0),
+    };
+  });
 }
 
 // default tiers to show when switching to flexible plan for the first time
