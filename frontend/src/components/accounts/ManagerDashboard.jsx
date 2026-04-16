@@ -180,7 +180,7 @@ function ManagerDashboard() {
         </div>
       </div>
 
-      {/* Low stock warnings table - CAT-04 requirement */}
+      {/* low stock warnings */}
       <div style={{
         background: 'white',
         borderRadius: '0.75rem',

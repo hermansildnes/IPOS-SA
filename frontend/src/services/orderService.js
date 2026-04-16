@@ -1,10 +1,8 @@
-// implements ISAOrderAPI - wrapper methods for all order-related backend calls
-// placeOrder, trackOrderProgress, queryBalance, viewPreviousOrders, getCatalogue
+// order service - wraps the backend order and catalogue endpoints
 
 import { apiClient } from './apiClient';
 
-// convert backend snake_case order fields to camelCase for the frontend
-// needed because python uses snake_case but JS convention is camelCase
+// backend uses snake_case, frontend needs camelCase
 function convertOrderFromBackend(order) {
   return {
     id: order.id,
@@ -32,9 +30,7 @@ function convertOrderFromBackend(order) {
   };
 }
 
-// placeOrder (ISAOrderAPI.placeOrder)
-// submits a new order to the backend with the current cart items
-// returns success + orderId + discount info on success
+// submit the cart to the backend
 export async function placeOrder(items) {
   try {
     const response = await apiClient.post('/orders', { items });
@@ -46,8 +42,7 @@ export async function placeOrder(items) {
       total: response.total,
       discount: response.discount,
       amountDue: response.amount_due,
-      // backend sets this true when the order itself triggered an account suspension
-      // happens when the order pushed outstanding debt over the credit limit
+      // true if placing this order pushed the account over the credit limit
       accountSuspended: response.account_suspended === true,
     };
   } catch (error) {
@@ -59,9 +54,7 @@ export async function placeOrder(items) {
   }
 }
 
-// trackOrderProgress (ISAOrderAPI.trackOrderProgress)
-// returns the current status string for a given order id
-// this is what the interface diagram specifies - status only
+// just returns the status string for a given order
 export async function trackOrderProgress(orderID) {
   try {
     const order = await getOrderDetails(orderID);
@@ -72,9 +65,7 @@ export async function trackOrderProgress(orderID) {
   }
 }
 
-// getOrderDetails - internal helper used by OrderDetailPage
-// returns the full order object (not just status) so we can show all fields
-// same endpoint as trackOrderProgress but we need the whole thing here
+// full order object, used by the order detail page
 export async function getOrderDetails(orderID) {
   try {
     const order = await apiClient.get(`/orders/${orderID}`);
@@ -85,8 +76,7 @@ export async function getOrderDetails(orderID) {
   }
 }
 
-// queryBalance (ISAOrderAPI.queryBalance)
-// fetches the merchant's current credit limit, outstanding debt and available credit
+// get merchant balance info
 export async function queryBalance(merchantID) {
   try {
     const balance = await apiClient.get(`/merchants/${merchantID}/balance`);
@@ -101,8 +91,7 @@ export async function queryBalance(merchantID) {
   }
 }
 
-// viewPreviousOrders (ISAOrderAPI.viewPreviousOrders)
-// gets the order history for a specific merchant, optionally filtered by status
+// order history for a merchant
 export async function viewPreviousOrders(merchantID, status = null) {
   try {
     const params = status ? `?status=${status}` : '';
@@ -124,8 +113,7 @@ export async function viewPreviousOrders(merchantID, status = null) {
   }
 }
 
-// viewAllOrders - admin/manager only, not part of ISAOrderAPI
-// used by the admin orders page to see all orders across all merchants
+// admin/manager - all orders across all merchants
 export async function viewAllOrders(status = null) {
   try {
     const params = status ? `?status=${status}` : '';
@@ -147,8 +135,7 @@ export async function viewAllOrders(status = null) {
   }
 }
 
-// getCatalogue (ISAOrderAPI.getCatalogue)
-// fetches all products available in the catalogue
+// get all products from the catalogue
 export async function getCatalogue() {
   try {
     const products = await apiClient.get('/catalogue');
@@ -170,8 +157,7 @@ export async function getCatalogue() {
   }
 }
 
-// addProductStock - admin/manager only, adds new stock to an existing catalogue item
-// called when InfoPharma receives a delivery and needs to update availability
+// add stock when a delivery comes in
 export async function addProductStock(productId, quantity) {
   try {
     const result = await apiClient.post(`/catalogue/${productId}/stock`, { quantity });
@@ -182,8 +168,7 @@ export async function addProductStock(productId, quantity) {
   }
 }
 
-// reduceProductStock - admin/manager only, manually removes stock from a product
-// used for write offs, damage corrections or stock audits
+// reduce stock manually e.g. write offs
 export async function reduceProductStock(productId, quantity) {
   try {
     const result = await apiClient.post(`/catalogue/${productId}/stock/reduce`, { quantity });
@@ -194,8 +179,7 @@ export async function reduceProductStock(productId, quantity) {
   }
 }
 
-// getOrderInvoice - fetches the invoice for a specific order
-// available to the merchant who placed the order, and to admin/manager/director
+// get invoice for an order
 export async function getOrderInvoice(orderID) {
   try {
     const invoice = await apiClient.get(`/orders/${orderID}/invoice`);
@@ -215,7 +199,7 @@ export async function getOrderInvoice(orderID) {
   }
 }
 
-// createProduct - admin/manager only, adds a new product to the catalogue
+// add a new product to the catalogue
 export async function createProduct(productData) {
   try {
     const result = await apiClient.post('/catalogue', {
@@ -236,7 +220,7 @@ export async function createProduct(productData) {
   }
 }
 
-// updateProduct - admin/manager only, updates an existing catalogue item
+// update an existing product
 export async function updateProduct(productId, productData) {
   try {
     const result = await apiClient.put(`/catalogue/${productId}`, {
@@ -257,7 +241,7 @@ export async function updateProduct(productId, productData) {
   }
 }
 
-// deleteOrder - admin/manager only, permanently removes an order and its invoice/items
+// delete an order
 export async function deleteOrder(orderID) {
   try {
     await apiClient.delete(`/orders/${orderID}`);
@@ -268,7 +252,7 @@ export async function deleteOrder(orderID) {
   }
 }
 
-// deleteProduct - admin/manager only, removes a product from the catalogue
+// remove a product from the catalogue
 export async function deleteProduct(productId) {
   try {
     await apiClient.delete(`/catalogue/${productId}`);
@@ -279,8 +263,7 @@ export async function deleteProduct(productId) {
   }
 }
 
-// updateOrderStatus - used by admin/manager to move an order through its lifecycle
-// dispatch step requires courier details which get stored on the order
+// update order status, dispatch needs courier details
 export async function updateOrderStatus(orderID, status, dispatchDetails = null) {
   try {
     const body = { status };

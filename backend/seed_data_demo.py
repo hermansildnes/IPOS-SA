@@ -6,7 +6,6 @@ cd backend
 uv run python seed_data_demo.py
 
 to rollback copy the backup file printed below back to ipos_sa.db and restart
-old dev data is still in seed_data.py if needed
 """
 
 import shutil

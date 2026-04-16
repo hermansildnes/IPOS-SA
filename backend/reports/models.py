@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
-# ── Turnover Report ────────────────────────────────────────────────────────
+# turnover report
 
 
 class TurnoverItem(BaseModel):
@@ -23,7 +23,7 @@ class TurnoverReport(BaseModel):
     grand_total_revenue: Decimal
 
 
-# ── Merchant Orders Summary ────────────────────────────────────────────────
+# merchant orders summary
 
 
 class OrderSummaryRow(BaseModel):
@@ -54,7 +54,7 @@ class MerchantOrdersSummaryReport(BaseModel):
     dispatched_orders: int
 
 
-# ── Merchant Orders Detailed ───────────────────────────────────────────────
+# merchant orders detailed
 
 
 class DetailedOrderItem(BaseModel):
@@ -88,7 +88,7 @@ class MerchantOrdersDetailedReport(BaseModel):
     orders: list[DetailedOrder]
 
 
-# ── Low Stock Report ───────────────────────────────────────────────────────
+# low stock report
 
 
 class LowStockItem(BaseModel):
@@ -107,7 +107,7 @@ class LowStockReport(BaseModel):
     total_items_below_minimum: int
 
 
-# ── Merchant Invoices Report ───────────────────────────────────────────────
+# merchant invoices report
 
 
 class MerchantInvoiceRow(BaseModel):
@@ -134,7 +134,7 @@ class MerchantInvoicesReport(BaseModel):
     total_invoices: int
 
 
-# ── All Invoices Report ────────────────────────────────────────────────────
+# all invoices report
 
 
 class AllInvoiceRow(BaseModel):
@@ -157,7 +157,7 @@ class AllInvoicesReport(BaseModel):
     total_invoices: int
 
 
-# ── Stock Turnover Report ──────────────────────────────────────────────────
+# stock turnover report
 
 
 class StockTurnoverItem(BaseModel):

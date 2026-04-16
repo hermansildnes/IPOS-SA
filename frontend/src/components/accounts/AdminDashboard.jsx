@@ -260,7 +260,7 @@ function AdminDashboard() {
         />
       </div>
 
-      {/* recent orders feed - replaces the static mock activity list */}
+      {/* recent orders */}
       <div style={{
         background: 'white',
         borderRadius: '0.75rem',
