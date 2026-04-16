@@ -4,6 +4,29 @@ It is important we use this repo to track any work done. In part for the entire 
 
 ## Quick start
 
+# Instructions for submission for markers:
+
+
+# backend (terminal 1)
+cd backend
+uv sync          
+uv run python seed_data_demo.py   # load script data
+uv run uvicorn main:app --reload # start backend
+
+# frontend (terminal 2)
+cd frontend
+npm install      
+npm run dev # start frontend
+
+
+# running tests
+
+cd frontend
+npm test -- --run
+
+
+
+
 ### Prerequisites
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) — Python package manager
 - [Node.js](https://nodejs.org/) (v20+)
