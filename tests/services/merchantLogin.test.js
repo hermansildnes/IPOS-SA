@@ -1,5 +1,6 @@
 // subsystem interface tests for merchantLogin
 // test cases 21-26 from the test case document
+// sequential suite numbers 57-68 track position in the full 1-82 suite
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -21,8 +22,8 @@ beforeEach(() => {
 
 describe('ISALoginAPI.merchantLogin', () => {
 
-  // test case 21 - valid credentials
-  it('TC-21: returns true for username="merchant1" and correct password', async () => {
+  // test case 21 (suite: 57) - valid credentials
+  it('57: returns true for username="merchant1" and correct password', async () => {
     apiClient.post.mockResolvedValueOnce({ access_token: 'valid-jwt-token' });
     apiClient.get.mockResolvedValueOnce({ id: 'M001', username: 'merchant1', role: 'merchant' });
 
@@ -33,8 +34,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(setAuthToken).toHaveBeenCalledWith('valid-jwt-token');
   });
 
-  // test case 22 - wrong password
-  it('TC-22: returns false for username="merchant1" with wrong password', async () => {
+  // test case 22 (suite: 58) - wrong password
+  it('58: returns false for username="merchant1" with wrong password', async () => {
     apiClient.post.mockRejectedValueOnce(new Error('Invalid username or password'));
 
     const result = await merchantLogin('merchant1', 'wrongPass');
@@ -43,8 +44,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(result.error).toBeTruthy();
   });
 
-  // test case 23 - merchant does not exist
-  it('TC-23: returns false when username="unknown" does not exist', async () => {
+  // test case 23 (suite: 59) - merchant does not exist
+  it('59: returns false when username="unknown" does not exist', async () => {
     apiClient.post.mockRejectedValueOnce(new Error('Invalid username or password'));
 
     const result = await merchantLogin('unknown', 'pass');
@@ -53,8 +54,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(result.error).toBeTruthy();
   });
 
-  // test case 24 - empty username
-  it('TC-24: returns false when username is empty', async () => {
+  // test case 24 (suite: 60) - empty username
+  it('60: returns false when username is empty', async () => {
     apiClient.post.mockRejectedValueOnce(new Error('Invalid username or password'));
 
     const result = await merchantLogin('', 'pass');
@@ -63,8 +64,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(result.error).toBeTruthy();
   });
 
-  // test case 25 - empty password
-  it('TC-25: returns false when password is empty', async () => {
+  // test case 25 (suite: 61) - empty password
+  it('61: returns false when password is empty', async () => {
     apiClient.post.mockRejectedValueOnce(new Error('Invalid username or password'));
 
     const result = await merchantLogin('merchant1', '');
@@ -73,8 +74,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(result.error).toBeTruthy();
   });
 
-  // test case 26 - both empty
-  it('TC-26: returns false when both username and password are empty', async () => {
+  // test case 26 (suite: 62) - both empty
+  it('62: returns false when both username and password are empty', async () => {
     apiClient.post.mockRejectedValueOnce(new Error('Invalid username or password'));
 
     const result = await merchantLogin('', '');
@@ -83,10 +84,10 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(result.error).toBeTruthy();
   });
 
-  // HTTP wrapper tests
+  // HTTP wrapper tests (suite: 63-68)
 
-  // verifies the correct HTTP method and endpoint are used
-  it('HTTP-01: sends a POST request to /auth/login', async () => {
+  // suite: 63 - verifies the correct HTTP method and endpoint are used
+  it('63: sends a POST request to /auth/login', async () => {
     apiClient.post.mockResolvedValueOnce({ access_token: 'tok' });
     apiClient.get.mockResolvedValueOnce({ id: '1', username: 'merchant1', role: 'merchant' });
 
@@ -96,8 +97,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(apiClient.post.mock.calls[0][0]).toBe('/auth/login');
   });
 
-  // verifies the request body uses the correct field names
-  it('HTTP-02: sends username and password as correct field names in request body', async () => {
+  // suite: 64 - verifies the request body uses the correct field names
+  it('64: sends username and password as correct field names in request body', async () => {
     apiClient.post.mockResolvedValueOnce({ access_token: 'tok' });
     apiClient.get.mockResolvedValueOnce({ id: '1', username: 'merchant1', role: 'merchant' });
 
@@ -109,8 +110,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     });
   });
 
-  // verifies the JWT token is stored after a successful login
-  it('HTTP-03: stores the JWT token returned in the response', async () => {
+  // suite: 65 - verifies the JWT token is stored after a successful login
+  it('65: stores the JWT token returned in the response', async () => {
     apiClient.post.mockResolvedValueOnce({ access_token: 'valid-jwt-token' });
     apiClient.get.mockResolvedValueOnce({ id: '1', username: 'merchant1', role: 'merchant' });
 
@@ -119,8 +120,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(setAuthToken).toHaveBeenCalledWith('valid-jwt-token');
   });
 
-  // verifies the token is cleared before every login attempt to prevent stale sessions
-  it('HTTP-04: clears any existing token before sending login request', async () => {
+  // suite: 66 - verifies the token is cleared before every login attempt to prevent stale sessions
+  it('66: clears any existing token before sending login request', async () => {
     apiClient.post.mockRejectedValueOnce(new Error('fail'));
 
     await merchantLogin('merchant1', 'correctPass');
@@ -128,8 +129,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(clearAuthToken).toHaveBeenCalled();
   });
 
-  // verifies no token is stored when login fails
-  it('HTTP-05: does not store a token when login fails', async () => {
+  // suite: 67 - verifies no token is stored when login fails
+  it('67: does not store a token when login fails', async () => {
     apiClient.post.mockRejectedValueOnce(new Error('Invalid username or password'));
 
     await merchantLogin('merchant1', 'wrongPass');
@@ -137,8 +138,8 @@ describe('ISALoginAPI.merchantLogin', () => {
     expect(setAuthToken).not.toHaveBeenCalled();
   });
 
-  // verifies a missing token in the response is treated as a failure
-  it('HTTP-06: returns failure if response contains no access_token field', async () => {
+  // suite: 68 - verifies a missing token in the response is treated as a failure
+  it('68: returns failure if response contains no access_token field', async () => {
     apiClient.post.mockResolvedValueOnce({ message: 'ok' });
 
     const result = await merchantLogin('merchant1', 'correctPass');
