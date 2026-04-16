@@ -35,6 +35,13 @@ __pycache__/
 
 # Node
 node_modules/
+package-lock.json
+
+# Python lock file
+uv.lock
+
+# IDE
+.idea/
 
 # Env files
 .env
