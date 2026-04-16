@@ -40,7 +40,6 @@ def create_product(data: ProductCreate, session: Session) -> Product:
 
 def update_product(product_id: UUID, data: ProductUpdate, session: Session) -> Product:
     product = get_product(product_id, session)
-    product.old_min_stock = product.min_stock_level  # stash for router to read
 
     product.product_code = data.product_code
     product.name = data.name

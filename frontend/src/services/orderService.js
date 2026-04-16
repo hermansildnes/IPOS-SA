@@ -150,6 +150,7 @@ export async function getCatalogue() {
       packageCost: parseFloat(product.package_cost),
       stockQuantity: product.stock_quantity,
       minStockLevel: product.min_stock_level,
+      restockPercentage: parseFloat(product.restock_percentage),
     }));
   } catch (error) {
     console.error('failed to get catalogue:', error);
